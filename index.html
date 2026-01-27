@@ -1,307 +1,102 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VYNTAR Marketplace - Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-</head>
-<body class="bg-gray-50">
-    <div class="min-h-screen">
-        <!-- Header -->
-        <header class="bg-white shadow-sm border-b border-gray-200">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                <div class="flex items-center">
-                    <svg class="w-8 h-8 text-gray-800 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
-                    </svg>
-                    <div>
-                        <h1 class="text-2xl font-bold text-gray-900">VYNTAR Marketplace</h1>
-                        <p class="text-sm text-gray-600">Real-time lead management dashboard</p>
-                    </div>
-                </div>
-            </div>
-        </header>
-
-        <!-- Main Content -->
-        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            
-            <!-- Add Lead Form -->
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-                <h2 class="text-xl font-bold text-gray-900 mb-4">Add Lead</h2>
-                <form id="addLeadForm" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Buyer name <span class="text-red-500">*</span>
-                        </label>
-                        <input type="text" id="buyerName" required
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Enter buyer name">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Buyer email</label>
-                        <input type="email" id="buyerEmail"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="buyer@example.com">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Buyer phone</label>
-                        <input type="tel" id="buyerPhone"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="(555) 123-4567">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
-                        <textarea id="message" rows="3"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Enter lead message or inquiry"></textarea>
-                    </div>
-                    <button type="submit"
-                        class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-                        Add Lead
-                    </button>
-                </form>
-            </div>
-
-            <!-- Leads Table -->
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-                    <h2 class="text-xl font-bold text-gray-900">
-                        Leads (<span id="leadCount">0</span>)
-                    </h2>
-                    <button onclick="refreshLeads()" 
-                        class="flex items-center text-gray-600 hover:text-gray-900 transition-colors">
-                        <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                        </svg>
-                        Refresh
-                    </button>
-                </div>
-                
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead class="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buyer Name</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thread ID</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Message</th>
-                            </tr>
-                        </thead>
-                        <tbody id="leadsTableBody" class="bg-white divide-y divide-gray-200">
-                            <!-- Leads will be inserted here -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-        </main>
-    </div>
-
-    <!-- Toast Notification -->
-    <div id="toast" class="hidden fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg">
-        <span id="toastMessage">Success!</span>
-    </div>
-
-    <script>
-        // Initialize Supabase with correct legacy anon key
-        const supabaseUrl = 'https://hfchmjmhkiqsibxtiwsk.supabase.co';
-        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhmY2htam1oa2lxc2lieHRpd3NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzOTE3MTMsImV4cCI6MjA4Mzk2NzcxM30.ksEGK2s24omNrpJOK_hHt24RsGlI5nPupv83bIdVe_o';
-        
-        const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
-
-        // Status color mapping
-        const statusColors = {
-            'new': 'bg-blue-100 text-blue-800',
-            'contacted': 'bg-yellow-100 text-yellow-800',
-            'qualified': 'bg-green-100 text-green-800',
-            'converted': 'bg-green-600 text-white',
-            'lost': 'bg-red-100 text-red-800'
-        };
-
-        // Format relative time
-        function formatRelativeTime(dateString) {
-            const date = new Date(dateString);
-            const now = new Date();
-            const diffMs = now - date;
-            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-            
-            if (diffDays === 0) return 'Today';
-            if (diffDays === 1) return '1d ago';
-            if (diffDays < 30) return ${diffDays}d ago;
-            if (diffDays < 365) return ${Math.floor(diffDays / 30)}mo ago;
-            return ${Math.floor(diffDays / 365)}y ago;
-        }
-
-        // Show toast notification
-        function showToast(message, type = 'success') {
-            const toast = document.getElementById('toast');
-            const toastMessage = document.getElementById('toastMessage');
-            
-            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg ${
-                type === 'success' ? 'bg-green-500' : 'bg-red-500'
-            } text-white`;
-            
-            toastMessage.textContent = message;
-            toast.classList.remove('hidden');
-            
-            setTimeout(() => {
-                toast.classList.add('hidden');
-            }, 3000);
-        }
-
-        // Render leads table
-        function renderLeads(leads) {
-            const tbody = document.getElementById('leadsTableBody');
-            const leadCount = document.getElementById('leadCount');
-            
-            leadCount.textContent = leads.length;
-            
-            if (leads.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="5" class="px-6 py-8 text-center text-gray-500">
-                            No leads yet. Add your first lead above.
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-            
-            tbody.innerHTML = leads.map(lead => `
-                <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-medium text-gray-900">${lead.buyer_name || 'Unknown'}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-500 font-mono">${lead.thread_id || 'N/A'}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <select 
-                            onchange="updateLeadStatus('${lead.id}', this.value, this)"
-                            class="px-3 py-1 rounded-full text-xs font-semibold ${statusColors[lead.status || 'new']} border-0 cursor-pointer transition-all duration-200">
-                            <option value="new" ${lead.status === 'new' ? 'selected' : ''}>new</option>
-                            <option value="contacted" ${lead.status === 'contacted' ? 'selected' : ''}>contacted</option>
-                            <option value="qualified" ${lead.status === 'qualified' ? 'selected' : ''}>qualified</option>
-                            <option value="converted" ${lead.status === 'converted' ? 'selected' : ''}>converted</option>
-                            <option value="lost" ${lead.status === 'lost' ? 'selected' : ''}>lost</option>
-                        </select>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-semibold text-gray-900">${lead.score || 0}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="flex items-center text-sm text-gray-500">
-                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            ${formatRelativeTime(lead.created_at)}
-                        </div>
-                    </td>
-                </tr>
-            `).join('');
-        }
-
-        // Update lead status with color change
-        async function updateLeadStatus(leadId, newStatus, selectElement) {
-            try {
-                // Update color immediately for instant feedback
-                selectElement.className = px-3 py-1 rounded-full text-xs font-semibold ${statusColors[newStatus]} border-0 cursor-pointer transition-all duration-200;
-                
-                const { error } = await supabase
-                    .from('leads')
-                    .update({ status: newStatus })
-                    .eq('id', leadId);
-                
-                if (error) throw error;
-                
-                showToast(Status updated to ${newStatus});
-            } catch (error) {
-                console.error('Error updating status:', error);
-                showToast('Failed to update status', 'error');
-                // Refresh to revert on error
-                refreshLeads();
-            }
-        }
-
-        // Load leads
-        async function loadLeads() {
-            try {
-                const { data, error } = await supabase
-                    .from('leads')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-                
-                if (error) throw error;
-                
-                renderLeads(data || []);
-            } catch (error) {
-                console.error('Error loading leads:', error);
-                showToast('Failed to load leads', 'error');
-            }
-        }
-
-        // Refresh leads
-        function refreshLeads() {
-            loadLeads();
-            showToast('Leads refreshed');
-        }
-
-        // Add lead form submission
-        document.getElementById('addLeadForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const buyerName = document.getElementById('buyerName').value;
-            const buyerEmail = document.getElementById('buyerEmail').value;
-            const buyerPhone = document.getElementById('buyerPhone').value;
-            const message = document.getElementById('message').value;
-            
-            try {
-                const { error } = await supabase
-                    .from('leads')
-                    .insert([{
-                        buyer_name: buyerName,
-                        buyer_email: buyerEmail || null,
-                        buyer_phone: buyerPhone || null,
-                        message: message || null,
-                        thread_id: manual_${Date.now()},
-                        status: 'new',
-                        score: 0,
-                        source: 'manual'
-                    }]);
-                
-                if (error) throw error;
-                
-                showToast('Lead added successfully!');
-                
-                // Reset form
-                e.target.reset();
-                
-                // Reload leads
-                loadLeads();
-                
-            } catch (error) {
-                console.error('Error adding lead:', error);
-                showToast('Failed to add lead', 'error');
-            }
+<!DOCTYPE html><html lang="en" data-theme="dark"><head><!--remix-island-start--><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>VYNTAR Supabase Leads - Bolt.new</title><meta name="description" content="Starter project for Node.js, a JavaScript runtime built on Chrome&#x27;s V8 JavaScript engine."/><meta property="og:type" content="object"/><meta property="og:site_name" content="bolt.new"/><meta property="og:title" content="VYNTAR Supabase Leads - Bolt.new"/><meta property="og:description" content="Starter project for Node.js, a JavaScript runtime built on Chrome&#x27;s V8 JavaScript engine."/><meta property="og:image" content="https://social-img.staticblitz.com/bolt-projects/sb1-h2rlg6vf"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="VYNTAR Supabase Leads - Bolt.new"/><meta name="twitter:description" content="Starter project for Node.js, a JavaScript runtime built on Chrome&#x27;s V8 JavaScript engine."/><meta name="twitter:image" content="https://social-img.staticblitz.com/bolt-projects/sb1-h2rlg6vf"/><meta name="twitter:site" content="@StackBlitz"/><meta name="bolt-version" content="6bb68bc"/><link rel="stylesheet" href="/assets/root-C7QeYowh.css"/><link rel="stylesheet" href="/assets/LightRaysCloud-DqVcXTCJ.css"/><link rel="stylesheet" href="/assets/LightRays-apN2LHcc.css"/><link rel="icon" href="/static/favicon.svg" type="image/svg+xml"/><link rel="icon" href="/static/favicon-48x48.png" type="image/png" sizes="48x48"/><link rel="icon" href="/static/favicon-96x96.png" type="image/png" sizes="96x96"/><link rel="icon" href="/static/favicon-192x192.png" type="image/png" sizes="192x192"/><link rel="apple-touch-icon" href="/static/apple-touch-icon.png" sizes="180x180"/><link rel="stylesheet" href="/assets/ReactToastify-Bh76j7cs.css"/><link rel="stylesheet" href="/assets/tailwind-compat-Bwh-BmjE.css"/><link rel="stylesheet" href="/assets/index-D9my7o4Y.css"/><link rel="stylesheet" href="/assets/xterm-LZoznX6r.css"/><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/><link rel="preload" href="/static/fonts/inter-display-semibold.woff2" as="font" type="font/woff2" crossorigin="anonymous"/><link rel="preload" href="/static/fonts/inter-display-bold.woff2" as="font" type="font/woff2" crossorigin="anonymous"/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"/><link rel="stylesheet" href="/static/fonts/fonts.css"/><link rel="stylesheet" href="/assets/SupabaseLogo-CzqnVCjZ.css"/><link rel="stylesheet" href="/assets/Chat-CX6IgRL_.css"/><script>(function createWorkaroundGlobal() {
+  window["__name"] = () => {
+  };
+})();</script><script>(function blockDOMMutations() {
+  const observer2 = new MutationObserver((mutations2) => {
+    observer2.disconnect();
+    mutations2.reverse().forEach((mutation) => {
+      if (mutation.type === "childList") {
+        mutation.addedNodes.forEach((node2) => {
+          if ([document.head, document.body, document.documentElement].includes(node2.parentNode)) {
+            return;
+          }
+          if (node2.parentNode) {
+            node2.parentNode.removeChild(node2);
+          }
         });
+        mutation.removedNodes.forEach((node2) => {
+          if (mutation.previousSibling) {
+            mutation.target.insertBefore(node2, mutation.previousSibling.nextSibling);
+          } else if (mutation.target) {
+            mutation.target.appendChild(node2);
+          }
+        });
+      }
+      if (mutation.type === "attributes") {
+        const { target, attributeName, oldValue } = mutation;
+        if (attributeName) {
+          if (oldValue === null) {
+            target.removeAttribute(attributeName);
+          } else {
+            target.setAttribute(attributeName, oldValue);
+          }
+        }
+      }
+      if (mutation.type === "characterData") {
+        mutation.target.data = mutation.oldValue ?? "";
+      }
+    });
+    observe();
+  });
+  function observe() {
+    observer2.observe(document, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeOldValue: true,
+      characterData: true,
+      characterDataOldValue: true
+    });
+  }
+  __name(observe, "observe");
+  window.addEventListener("DOMContentLoaded", observe);
+  window.__allowDOMMutations = () => {
+    observer2.disconnect();
+    window.__loadingPrompt = document.querySelector("textarea")?.value;
+  };
+})();</script><script>(function themeCode(storageKey, defaultTheme) {
+  if (window.location.pathname !== "/figma") {
+    setBoltTheme();
+  }
+  function setBoltTheme() {
+    const htmlElement = document.querySelector("html");
+    const localTheme = localStorage.getItem(storageKey);
+    const metaElement = document.querySelector("meta[name=bolt-theme]");
+    let theme3 = metaElement?.content ?? localTheme ?? defaultTheme;
+    htmlElement.setAttribute("data-theme-option", theme3);
+    if (theme3 === "system") {
+      const prefersDark2 = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      theme3 = prefersDark2 ? "dark" : "light";
+    }
+    htmlElement.setAttribute("data-theme", theme3);
+  }
+  __name(setBoltTheme, "setBoltTheme");
+})("bolt_theme", "dark");</script><script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-58KJM59B');</script><!--remix-island-end--></head><body class="bg-bolt-elements-background-depth-1"><div id="root" class="w-full h-full"><div class="flex flex-col h-full w-full"><header class="flex shrink-0 select-none selection-accent items-center pl-5 pr-4 border-b h-[var(--header-height)] z-21 fixed w-full backdrop-blur-[17px] border-bolt-elements-borderColor"><div class="flex grow-1 basis-60 items-center gap-2 text-bolt-elements-textPrimary"><div class="z-logo"><a href="/" class="text-2xl font-semibold text-accent flex items-center"><span class="i-bolt:logos-bolt-new?mask w-[70.5px] inline-block"></span></a></div></div><div class="flex grow-1 basis-60 justify-end items-center gap-3"></div></header></div><script>((STORAGE_KEY2, restoreKey) => {
+    if (!window.history.state || !window.history.state.key) {
+      let key2 = Math.random().toString(32).slice(2);
+      window.history.replaceState({
+        key: key2
+      }, "");
+    }
+    try {
+      let positions = JSON.parse(sessionStorage.getItem(STORAGE_KEY2) || "{}");
+      let storedY = positions[restoreKey || window.history.state.key];
+      if (typeof storedY === "number") {
+        window.scrollTo(0, storedY);
+      }
+    } catch (error6) {
+      console.error(error6);
+      sessionStorage.removeItem(STORAGE_KEY2);
+    }
+  })("positions", null)</script><link rel="modulepreload" href="/assets/manifest-87c0bdf0.js"/><link rel="modulepreload" href="/assets/entry.client-RZo9SSct.js"/><link rel="modulepreload" href="/assets/jsx-runtime-1sLyK8z6.js"/><link rel="modulepreload" href="/assets/index-DDV3IqPM.js"/><link rel="modulepreload" href="/assets/sentry.client-CS6sYCwx.js"/><link rel="modulepreload" href="/assets/performance-DC67qsTE.js"/><link rel="modulepreload" href="/assets/node-B9mmvisv.js"/><link rel="modulepreload" href="/assets/breadcrumbs-Cdb0RAB0.js"/><link rel="modulepreload" href="/assets/index-DOCXzdXe.js"/><link rel="modulepreload" href="/assets/components-BBJybKHn.js"/><link rel="modulepreload" href="/assets/index-DbUFjI1P.js"/><link rel="modulepreload" href="/assets/queryClient-BDEK6sFg.js"/><link rel="modulepreload" href="/assets/QueryClientProvider-DvgMZzsw.js"/><link rel="modulepreload" href="/assets/react-toastify.esm-CiHmFom-.js"/><link rel="modulepreload" href="/assets/server.browser-oXI-1ztg.js"/><link rel="modulepreload" href="/assets/client-only-BkxcrwwO.js"/><link rel="modulepreload" href="/assets/analytics-CYYomLn6.js"/><link rel="modulepreload" href="/assets/index-BAryUSQ4.js"/><link rel="modulepreload" href="/assets/Button-HdSt90ur.js"/><link rel="modulepreload" href="/assets/stripIndent-Q0TH8cRE.js"/><link rel="modulepreload" href="/assets/ErrorBoundary-BQnbT_bY.js"/><link rel="modulepreload" href="/assets/theme-CjIvxq66.js"/><link rel="modulepreload" href="/assets/Alert-DetHlFUm.js"/><link rel="modulepreload" href="/assets/login-DRBD-Mtm.js"/><link rel="modulepreload" href="/assets/query-CO1agd7b.js"/><link rel="modulepreload" href="/assets/mutation-ChqmYZpQ.js"/><link rel="modulepreload" href="/assets/constants-CN17og8V.js"/><link rel="modulepreload" href="/assets/invariant-D8CafcW6.js"/><link rel="modulepreload" href="/assets/tslib.es6-BpvmshU2.js"/><link rel="modulepreload" href="/assets/classNames-C77AAb8v.js"/><link rel="modulepreload" href="/assets/IconButton-iXlqD54I.js"/><link rel="modulepreload" href="/assets/Header-BdNuyXST.js"/><link rel="modulepreload" href="/assets/Logo-CWcpDnlY.js"/><link rel="modulepreload" href="/assets/chat-AwaZo5Y0.js"/><link rel="modulepreload" href="/assets/settings-lS_To2NB.js"/><link rel="modulepreload" href="/assets/Link-YXmN-RnF.js"/><link rel="modulepreload" href="/assets/index-D5DlDSsX.js"/><link rel="modulepreload" href="/assets/index-BDo-qD7A.js"/><link rel="modulepreload" href="/assets/description-C2UxDjr6.js"/><link rel="modulepreload" href="/assets/token-CtMEf4DS.js"/><link rel="modulepreload" href="/assets/LightRays.client-CbC4q18p.js"/><link rel="modulepreload" href="/assets/LightRaysCore-BzR6DIft.js"/><link rel="modulepreload" href="/assets/LightRays.module-D2vNhL_Z.js"/><link rel="modulepreload" href="/assets/LegacyIconButton-BN4T16w1.js"/><link rel="modulepreload" href="/assets/LightRaysCloud.client-DgqVE4Nv.js"/><link rel="modulepreload" href="/assets/LoadingDots-jDRNqk0J.js"/><link rel="modulepreload" href="/assets/root-G2MNmUYc.js"/><link rel="modulepreload" href="/assets/Input-CZTfjWU5.js"/><link rel="modulepreload" href="/assets/AccountDisplay-BdrayxWL.js"/><link rel="modulepreload" href="/assets/Switch-Ca0UBLyI.js"/><link rel="modulepreload" href="/assets/tokens-stats-KwZLFMz-.js"/><link rel="modulepreload" href="/assets/withSpinner-Ds_zMUfX.js"/><link rel="modulepreload" href="/assets/format-CUt-jP9V.js"/><link rel="modulepreload" href="/assets/SupabaseLogo-BiM6MVDb.js"/><link rel="modulepreload" href="/assets/Table-DbL4Ndw_.js"/><link rel="modulepreload" href="/assets/index-v3f_rkYC.js"/><link rel="modulepreload" href="/assets/Pagination-D5p5_ukm.js"/><link rel="modulepreload" href="/assets/LegacyDialog-C7yQCywu.js"/><link rel="modulepreload" href="/assets/helpers-B5XVpoSF.js"/><link rel="modulepreload" href="/assets/menu-fHQs3MNt.js"/><link rel="modulepreload" href="/assets/applicationManager-Cj4Mwn-D.js"/><link rel="modulepreload" href="/assets/connect._provider-B-fJ_5Oa.js"/><link rel="modulepreload" href="/assets/Dropdown-DWprr8Rr.js"/><link rel="modulepreload" href="/assets/util-LXi6-Omw.js"/><link rel="modulepreload" href="/assets/teamTemplates-BeSspdP2.js"/><link rel="modulepreload" href="/assets/useMutation-CrXuyWDp.js"/><link rel="modulepreload" href="/assets/overlay-DynkIUZ8.js"/><link rel="modulepreload" href="/assets/IndexLayout-B6gHuOWu.js"/><link rel="modulepreload" href="/assets/download-DIA3UpG2.js"/><link rel="modulepreload" href="/assets/api-CMxzqwPz.js"/><link rel="modulepreload" href="/assets/index-C7-QVYu6.js"/><link rel="modulepreload" href="/assets/Accordion-Ds_W4lY_.js"/><link rel="modulepreload" href="/assets/github-BSiDP8-p.js"/><link rel="modulepreload" href="/assets/useProjectVisibility-BqKdZkBP.js"/><link rel="modulepreload" href="/assets/sheetNavigation-CJDJgAyq.js"/><link rel="modulepreload" href="/assets/version-history-CoioQA3l.js"/><link rel="modulepreload" href="/assets/stripe-DnFi-_bO.js"/><link rel="modulepreload" href="/assets/prepare-body-BHTiAqkS.js"/><link rel="modulepreload" href="/assets/client-github-D2fv3qT2.js"/><link rel="modulepreload" href="/assets/ai-Bif5fy6Q.js"/><link rel="modulepreload" href="/assets/importStore-D_E2EVYv.js"/><link rel="modulepreload" href="/assets/index-rcjtyNF0.js"/><link rel="modulepreload" href="/assets/openWithStackblitzAuth-W-tfwowk.js"/><link rel="modulepreload" href="/assets/bolt-connect-Dl-IkrVJ.js"/><link rel="modulepreload" href="/assets/_chat-BhrYb63d.js"/><link rel="modulepreload" href="/assets/Chat.client-DoQ3Asrj.js"/><link rel="modulepreload" href="/assets/meta-Dzy08wkr.js"/><link rel="modulepreload" href="/assets/ConnectToFigmaDialog-DKH6aGX-.js"/><link rel="modulepreload" href="/assets/useTokenRefresh-Cu-vqnsk.js"/><link rel="modulepreload" href="/assets/DiscordSupportModal-Bbbv4hss.js"/><link rel="modulepreload" href="/assets/Sheet-CTjwmUPb.js"/><link rel="modulepreload" href="/assets/Pricing.client-DjRpuCgn.js"/><link rel="modulepreload" href="/assets/date-binning-tAd5sNtE.js"/><link rel="modulepreload" href="/assets/isYesterday--lACyv2R.js"/><link rel="modulepreload" href="/assets/AccountSelector.client-VRHI-vQn.js"/><link rel="modulepreload" href="/assets/client-error-g7cJCutP.js"/><link rel="modulepreload" href="/assets/formatDistanceToNow-b52WVAAT.js"/><link rel="modulepreload" href="/assets/current-user-rails-client-Cmi_pm4M.js"/><link rel="modulepreload" href="/assets/_chat.~._slug-C_nZ1PqG.js"/><script>window.__remixContext = {"basename":"/","future":{"v3_fetcherPersist":true,"v3_relativeSplatPath":true,"v3_throwAbortReason":true,"v3_singleFetch":false,"v3_lazyRouteDiscovery":false,"unstable_optimizeDeps":false},"isSpaMode":false,"state":{"loaderData":{"root":{"growthbookPayload":{"status":200,"features":{"team-creation-value-props":{"defaultValue":false,"rules":[{"id":"fr_19g61nmkgzmanv","coverage":1,"hashAttribute":"id","seed":"d500a5a6-408b-4770-bb3a-6f966bc77e93","hashVersion":2,"variations":[false,true],"weights":[0.5,0.5],"key":"team-creation-value-props","phase":"0","meta":[{"key":"0"},{"key":"1"}]}]}},"experiments":[],"dateUpdated":"2026-01-19T17:50:16.612Z"},"user":{"avatar":"https://stackblitz.com/avatars/V/202.svg","bio":null,"canPurchaseDomain":true,"canSubscribe":true,"churnkeyAuthKey":"e8428ca7f85293ffe0992ebcbd18b1936759458390b328a0b7c2e67373513764","createdAt":"2025-07-17T08:12:00.945Z","email":"vyntar@vyntaraiagent.com","expirableBoltTokenPurchases":[],"externalAccount":null,"externalAccounts":[{"provider":"google","username":null,"uri":null,"needsReauthorization":false},{"provider":"stripe","username":null,"uri":null,"needsReauthorization":false}],"featureFlags":{"experimentalNode":false,"previewTunneling":false,"hackathon":false,"boltGithubApp":false,"debugger":false,"providerBedrock":true,"customWebSearch":false,"browserTools":false,"figmaFrameImport":false,"teamTemplates":false,"importURL":false},"githubAppInstallation":null,"kind":"USER","location":null,"membership":{"nextInterval":null,"nextTier":null,"paid":true,"subscription":{"currentMonthStart":"2026-01-18","currentMonthStartTimestamp":1768710235000,"currentPeriodEnd":1771388635000,"currentPeriodStart":1768710235000,"freeTrial":false,"interval":"monthly","nextMonthStart":"2026-02-18","nextMonthStartTimestamp":1771388635000,"pendingUpdate":null,"planCost":5000,"quantity":1,"status":"active"},"tier":2,"updateSubscriptionFlowVersion":"tier_based_proration"},"membershipLevel":2,"name":"vyntar@vyntaraiagent.com","nextMembershipLevel":0,"onboardingSurveyResponse":{"status":"finished","surveyVersion":null},"roles":[],"site":null,"ssoRestricted":false,"stripeCustomerId":"cus_ShUpRkT2tj4lps","teamsPlan":false,"tokenAllocations":[{"event":"create-bucket","expiresAt":"2026-02-18T04:23:55.000Z","id":1651584,"kind":"recurring","label":null,"organizationId":null,"startsAt":"2025-12-18T04:23:55.000Z","tokens":26000000},{"event":"create-bucket","expiresAt":"2026-03-18T04:23:55.000Z","id":1778004,"kind":"recurring","label":null,"organizationId":null,"startsAt":"2026-01-18T04:23:55.000Z","tokens":26000000}],"totalBoltTokenPurchases":1000000,"username":"vyntar","wcAPIMembership":null,"wcAPIStripeAccount":null,"id":"6166654","organizations":[{"adminEmails":["vyntar@vyntaraiagent.com"],"avatar":"https://stackblitz.com/avatars/V/74.svg","billing":{"active":false,"custom":false,"email":"vyntar@vyntaraiagent.com","nextInterval":null,"nextTier":null,"paid":false,"subscription":{"currentMonthStartTimestamp":null,"currentPeriodEnd":1756563438000,"currentPeriodStart":1753885038000,"freeTrial":false,"interval":"monthly","nextMonthStartTimestamp":null,"pendingUpdate":null,"planCost":3000,"quantity":1,"status":"canceled"},"tier":0},"canManageSSO":false,"canSeeSSO":false,"canTransferProjects":false,"canDestroy":true,"canHaveCollectionsStarters":true,"canPurchaseDomain":false,"canPurgeOldProjects":false,"canReloadBoltTokens":false,"canUsePaidFeatures":false,"churnkeyAuthKey":"20dcf4959eb59a0d54b0d9177daf6c704dec514748c2e90cc9e7343db335a9b6","deletedPaidMembersCount":0,"description":null,"expirableBoltTokenPurchases":[],"gitProvider":null,"githubAppInstallation":null,"id":34302,"name":"vyntar","organizationSettings":{"allowInvitingNonmembers":false,"deployProvider":"user","disabledIntegrations":[],"maxVisibility":"public","memberProjectRole":"editor","projectStalenessDays":null,"purgeStaleProjects":false,"showAccountSelector":true,"showIntegrations":true},"owner":"vyntar","paidMembersCount":0,"provider":"custom","providerUid":"vyntar","reallocatableSeatsCount":0,"role":"admin","setupState":null,"slug":"vyntar","stripeCustomerId":"cus_Sm96kmwbriyQtx","totalBoltTokenPurchases":0,"websiteUrl":null}],"organizationInvites":[],"activeOrganizationId":null,"surveys":{"onboarding":"finished"}},"loggedIn":true,"token":"4GnXstFLApDQbmkO0OY6Sa0I1gTPEEsSUbJ86bj2u7o","swk":"ta1kDK49qdEDEfd8KYxI37mW0GPkLKn1","gbk":"sdk-ye5YC6vB6I5SoRX"},"routes/_chat.~.$slug":{"user":{"avatar":"https://stackblitz.com/avatars/V/202.svg","bio":null,"canPurchaseDomain":true,"canSubscribe":true,"churnkeyAuthKey":"e8428ca7f85293ffe0992ebcbd18b1936759458390b328a0b7c2e67373513764","createdAt":"2025-07-17T08:12:00.945Z","email":"vyntar@vyntaraiagent.com","expirableBoltTokenPurchases":[],"externalAccount":null,"externalAccounts":[{"provider":"google","username":null,"uri":null,"needsReauthorization":false},{"provider":"stripe","username":null,"uri":null,"needsReauthorization":false}],"featureFlags":{"experimentalNode":false,"previewTunneling":false,"hackathon":false,"boltGithubApp":false,"debugger":false,"providerBedrock":true,"customWebSearch":false,"browserTools":false,"figmaFrameImport":false,"teamTemplates":false,"importURL":false},"githubAppInstallation":null,"kind":"USER","location":null,"membership":{"nextInterval":null,"nextTier":null,"paid":true,"subscription":{"currentMonthStart":"2026-01-18","currentMonthStartTimestamp":1768710235000,"currentPeriodEnd":1771388635000,"currentPeriodStart":1768710235000,"freeTrial":false,"interval":"monthly","nextMonthStart":"2026-02-18","nextMonthStartTimestamp":1771388635000,"pendingUpdate":null,"planCost":5000,"quantity":1,"status":"active"},"tier":2,"updateSubscriptionFlowVersion":"tier_based_proration"},"membershipLevel":2,"name":"vyntar@vyntaraiagent.com","nextMembershipLevel":0,"onboardingSurveyResponse":{"status":"finished","surveyVersion":null},"roles":[],"site":null,"ssoRestricted":false,"stripeCustomerId":"cus_ShUpRkT2tj4lps","teamsPlan":false,"tokenAllocations":[{"event":"create-bucket","expiresAt":"2026-02-18T04:23:55.000Z","id":1651584,"kind":"recurring","label":null,"organizationId":null,"startsAt":"2025-12-18T04:23:55.000Z","tokens":26000000},{"event":"create-bucket","expiresAt":"2026-03-18T04:23:55.000Z","id":1778004,"kind":"recurring","label":null,"organizationId":null,"startsAt":"2026-01-18T04:23:55.000Z","tokens":26000000}],"totalBoltTokenPurchases":1000000,"username":"vyntar","wcAPIMembership":null,"wcAPIStripeAccount":null,"id":"6166654","organizations":[{"adminEmails":["vyntar@vyntaraiagent.com"],"avatar":"https://stackblitz.com/avatars/V/74.svg","billing":{"active":false,"custom":false,"email":"vyntar@vyntaraiagent.com","nextInterval":null,"nextTier":null,"paid":false,"subscription":{"currentMonthStartTimestamp":null,"currentPeriodEnd":1756563438000,"currentPeriodStart":1753885038000,"freeTrial":false,"interval":"monthly","nextMonthStartTimestamp":null,"pendingUpdate":null,"planCost":3000,"quantity":1,"status":"canceled"},"tier":0},"canManageSSO":false,"canSeeSSO":false,"canTransferProjects":false,"canDestroy":true,"canHaveCollectionsStarters":true,"canPurchaseDomain":false,"canPurgeOldProjects":false,"canReloadBoltTokens":false,"canUsePaidFeatures":false,"churnkeyAuthKey":"20dcf4959eb59a0d54b0d9177daf6c704dec514748c2e90cc9e7343db335a9b6","deletedPaidMembersCount":0,"description":null,"expirableBoltTokenPurchases":[],"gitProvider":null,"githubAppInstallation":null,"id":34302,"name":"vyntar","organizationSettings":{"allowInvitingNonmembers":false,"deployProvider":"user","disabledIntegrations":[],"maxVisibility":"public","memberProjectRole":"editor","projectStalenessDays":null,"purgeStaleProjects":false,"showAccountSelector":true,"showIntegrations":true},"owner":"vyntar","paidMembersCount":0,"provider":"custom","providerUid":"vyntar","reallocatableSeatsCount":0,"role":"admin","setupState":null,"slug":"vyntar","stripeCustomerId":"cus_Sm96kmwbriyQtx","totalBoltTokenPurchases":0,"websiteUrl":null}],"organizationInvites":[],"activeOrganizationId":null,"surveys":{"onboarding":"finished"},"settings":{"general":{"showTokenUsageInChat":true},"featurePreviews":{}}},"slug":"sb1-h2rlg6vf","projectId":"62583559","projectInfo":{"description":"Starter project for Node.js, a JavaScript runtime built on Chrome's V8 JavaScript engine.","id":"62583559","slug":"sb1-h2rlg6vf","title":"VYNTAR Supabase Leads"},"tokenStats":{"billingPeriod":{"from":1768710235000,"to":1771388635000},"maxPerDay":26000000,"maxPerMonth":26000000,"regularTokens":{"used":32346017,"available":52000000},"regularTokenBreakdown":[{"expiresOn":1771388635000,"available":26000000,"used":26000000,"type":"rolled-over"},{"expiresOn":1773807835000,"available":26000000,"used":6346017,"type":"active-month"}],"rewardTokens":{"used":0,"available":0},"rewardTokenBreakdown":[],"nextTier":{"level":3,"limits":{"perDay":55000000,"perMonth":55000000},"type":"pro"},"overflow":{"available":1000000,"used":1000000},"purchased":{"available":1000000,"used":1000000},"totalThisMonth":5358853,"totalToday":0,"referralTokens":{"free":{"available":0,"rewardCount":0,"used":0},"paid":{"available":0,"rewardCount":0,"used":0}},"specialTokens":{"available":0,"used":0}}},"routes/_chat":null},"actionData":null,"errors":null}};</script><script type="module" async="">import "/assets/manifest-87c0bdf0.js";
+import * as route0 from "/assets/root-G2MNmUYc.js";
+import * as route1 from "/assets/_chat-BhrYb63d.js";
+import * as route2 from "/assets/_chat.~._slug-C_nZ1PqG.js";
 
-        // Set up real-time subscription
-        const leadsSubscription = supabase
-            .channel('leads-changes')
-            .on('postgres_changes', 
-                { event: '*', schema: 'public', table: 'leads' },
-                (payload) => {
-                    console.log('Real-time update:', payload);
-                    loadLeads();
-                }
-            )
-            .subscribe();
+window.__remixRouteModules = {"root":route0,"routes/_chat":route1,"routes/_chat.~.$slug":route2};
 
-        // Initial load
-        loadLeads();
-    </script>
-</body>
-</html>
+import("/assets/entry.client-RZo9SSct.js");</script></div></body></html>
