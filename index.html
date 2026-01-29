@@ -3,305 +3,522 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VYNTAR Marketplace - Dashboard</title>
+    <title>VYNTAR Marketplace Intelligence - Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        .status-badge { transition: all 0.2s ease; }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+        .spinner { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
 </head>
-<body class="bg-gray-50">
-    <div class="min-h-screen">
-        <!-- Header -->
-        <header class="bg-white shadow-sm border-b border-gray-200">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+<body class="bg-gray-50 min-h-screen">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
                 <div class="flex items-center">
-                    <svg class="w-8 h-8 text-gray-800 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
-                    </svg>
+                    <div class="w-9 h-9 bg-indigo-600 rounded-lg flex items-center justify-center mr-3">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                    </div>
                     <div>
-                        <h1 class="text-2xl font-bold text-gray-900">VYNTAR Marketplace</h1>
-                        <p class="text-sm text-gray-600">Real-time lead management dashboard</p>
+                        <h1 class="text-xl sm:text-2xl font-bold text-gray-900">VYNTAR Marketplace</h1>
+                        <p class="text-xs sm:text-sm text-gray-500">Real-time lead management dashboard</p>
                     </div>
                 </div>
+                <div id="connectionStatus" class="flex items-center text-sm text-gray-400">
+                    <span class="w-2 h-2 rounded-full bg-gray-300 mr-2"></span>
+                    Connecting...
+                </div>
             </div>
-        </header>
+        </div>
+    </header>
 
-        <!-- Main Content -->
-        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            
-            <!-- Add Lead Form -->
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-                <h2 class="text-xl font-bold text-gray-900 mb-4">Add Lead</h2>
-                <form id="addLeadForm" class="space-y-4">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6" id="statsCards">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wider">Total Leads</p>
+                <p class="text-2xl font-bold text-gray-900 mt-1" id="statTotal">-</p>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-blue-200 p-4">
+                <p class="text-xs font-medium text-blue-600 uppercase tracking-wider">New</p>
+                <p class="text-2xl font-bold text-blue-700 mt-1" id="statNew">-</p>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-yellow-200 p-4">
+                <p class="text-xs font-medium text-yellow-600 uppercase tracking-wider">Contacted</p>
+                <p class="text-2xl font-bold text-yellow-700 mt-1" id="statContacted">-</p>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-emerald-200 p-4">
+                <p class="text-xs font-medium text-emerald-600 uppercase tracking-wider">Qualified</p>
+                <p class="text-2xl font-bold text-emerald-700 mt-1" id="statQualified">-</p>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-green-200 p-4 col-span-2 lg:col-span-1">
+                <p class="text-xs font-medium text-green-600 uppercase tracking-wider">Converted</p>
+                <p class="text-2xl font-bold text-green-700 mt-1" id="statConverted">-</p>
+            </div>
+        </div>
+
+        <!-- Add Lead Form (collapsible) -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+            <button onclick="toggleForm()" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors rounded-lg">
+                <div class="flex items-center">
+                    <svg class="w-5 h-5 text-indigo-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                    </svg>
+                    <h2 class="text-lg font-semibold text-gray-900">Add New Lead</h2>
+                </div>
+                <svg id="formChevron" class="w-5 h-5 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+            </button>
+            <div id="formContainer" class="hidden px-6 pb-6">
+                <form id="addLeadForm" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Buyer name <span class="text-red-500">*</span>
+                            Buyer Name <span class="text-red-500">*</span>
                         </label>
                         <input type="text" id="buyerName" required
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Enter buyer name">
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                            placeholder="Full name">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Buyer email</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
                         <input type="email" id="buyerEmail"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                             placeholder="buyer@example.com">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Buyer phone</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
                         <input type="tel" id="buyerPhone"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                             placeholder="(555) 123-4567">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
-                        <textarea id="message" rows="3"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            placeholder="Enter lead message or inquiry"></textarea>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Initial Score</label>
+                        <input type="number" id="leadScore" min="0" max="100" value="0"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                            placeholder="0-100">
                     </div>
-                    <button type="submit"
-                        class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-                        Add Lead
-                    </button>
+                    <div class="sm:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Message / Notes</label>
+                        <textarea id="message" rows="2"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                            placeholder="Lead inquiry or notes..."></textarea>
+                    </div>
+                    <div class="sm:col-span-2 flex items-center gap-3">
+                        <button type="submit" id="submitBtn"
+                            class="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                            Add Lead
+                        </button>
+                        <span id="submitStatus" class="text-sm text-gray-500 hidden"></span>
+                    </div>
                 </form>
             </div>
+        </div>
 
-            <!-- Leads Table -->
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-                    <h2 class="text-xl font-bold text-gray-900">
-                        Leads (<span id="leadCount">0</span>)
-                    </h2>
-                    <button onclick="refreshLeads()" 
-                        class="flex items-center text-gray-600 hover:text-gray-900 transition-colors">
-                        <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+        <!-- Leads Table -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h2 class="text-lg font-semibold text-gray-900">
+                    Leads <span class="text-gray-400 font-normal">(<span id="leadCount">0</span>)</span>
+                </h2>
+                <div class="flex items-center gap-3">
+                    <div class="relative">
+                        <input type="text" id="searchInput" placeholder="Search leads..."
+                            class="pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-48"
+                            oninput="filterLeads()">
+                        <svg class="w-4 h-4 text-gray-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                    </div>
+                    <button onclick="refreshLeads()"
+                        class="flex items-center px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                        <svg id="refreshIcon" class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                         </svg>
                         Refresh
                     </button>
                 </div>
-                
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead class="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buyer Name</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thread ID</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Message</th>
-                            </tr>
-                        </thead>
-                        <tbody id="leadsTableBody" class="bg-white divide-y divide-gray-200">
-                            <!-- Leads will be inserted here -->
-                        </tbody>
-                    </table>
-                </div>
             </div>
 
-        </main>
-    </div>
+            <!-- Loading State -->
+            <div id="loadingState" class="px-6 py-12 text-center">
+                <svg class="w-8 h-8 text-indigo-500 spinner mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                <p class="text-gray-500 text-sm">Loading leads from database...</p>
+            </div>
 
-    <!-- Toast Notification -->
-    <div id="toast" class="hidden fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg">
-        <span id="toastMessage">Success!</span>
-    </div>
+            <!-- Error State -->
+            <div id="errorState" class="hidden px-6 py-12 text-center">
+                <svg class="w-10 h-10 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                </svg>
+                <p class="text-red-600 font-medium mb-1">Connection Error</p>
+                <p class="text-gray-500 text-sm mb-3" id="errorMessage">Failed to connect to database.</p>
+                <button onclick="loadLeads()" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium">
+                    Retry
+                </button>
+            </div>
+
+            <!-- Table -->
+            <div id="tableContainer" class="hidden overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buyer</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Contact</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Source</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Added</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leadsTableBody" class="bg-white divide-y divide-gray-200">
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="hidden px-6 py-12 text-center">
+                <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                <p class="text-gray-500 font-medium mb-1">No leads yet</p>
+                <p class="text-gray-400 text-sm">Click "Add New Lead" above to create your first lead.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
 
     <script>
-        // Initialize Supabase with correct legacy anon key
-        const supabaseUrl = 'https://hfchmjmhkiqsibxtiwsk.supabase.co';
-        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhmY2htam1oa2lxc2lieHRpd3NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzOTE3MTMsImV4cCI6MjA4Mzk2NzcxM30.ksEGK2s24omNrpJOK_hHt24RsGlI5nPupv83bIdVe_o';
-        
-        const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+        // ─── Supabase Init ───────────────────────────────────────────────
+        const SUPABASE_URL = 'https://hfchmjmhkiqsibxtiwsk.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhmY2htam1oa2lxc2lieHRpd3NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzOTE3MTMsImV4cCI6MjA4Mzk2NzcxM30.ksEGK2s24omNrpJOK_hHt24RsGlI5nPupv83bIdVe_o';
 
-        // Status color mapping
-        const statusColors = {
-            'new': 'bg-blue-100 text-blue-800',
-            'contacted': 'bg-yellow-100 text-yellow-800',
-            'qualified': 'bg-green-100 text-green-800',
-            'converted': 'bg-green-600 text-white',
-            'lost': 'bg-red-100 text-red-800'
+        let db;
+        let allLeads = [];
+
+        try {
+            db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            setConnectionStatus('connecting');
+        } catch (e) {
+            setConnectionStatus('error');
+            console.error('Supabase init failed:', e);
+        }
+
+        // ─── Status Config ───────────────────────────────────────────────
+        const STATUS_CONFIG = {
+            'new':       { bg: 'bg-blue-100',   text: 'text-blue-800',   dot: 'bg-blue-500' },
+            'contacted': { bg: 'bg-yellow-100', text: 'text-yellow-800', dot: 'bg-yellow-500' },
+            'qualified': { bg: 'bg-emerald-100', text: 'text-emerald-800', dot: 'bg-emerald-500' },
+            'converted': { bg: 'bg-green-600',  text: 'text-white',      dot: 'bg-white' },
+            'lost':      { bg: 'bg-red-100',    text: 'text-red-800',    dot: 'bg-red-500' }
         };
 
-        // Format relative time
+        // ─── Connection Status ───────────────────────────────────────────
+        function setConnectionStatus(state) {
+            const el = document.getElementById('connectionStatus');
+            const states = {
+                connecting: { color: 'text-gray-400', dot: 'bg-gray-300', label: 'Connecting...' },
+                connected:  { color: 'text-green-600', dot: 'bg-green-500 pulse-dot', label: 'Connected' },
+                error:      { color: 'text-red-500', dot: 'bg-red-500', label: 'Disconnected' },
+                realtime:   { color: 'text-green-600', dot: 'bg-green-500 pulse-dot', label: 'Live' }
+            };
+            const s = states[state] || states.connecting;
+            el.className = `flex items-center text-sm ${s.color}`;
+            el.innerHTML = `<span class="w-2 h-2 rounded-full ${s.dot} mr-2"></span>${s.label}`;
+        }
+
+        // ─── Toast Notifications ─────────────────────────────────────────
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const colors = {
+                success: 'bg-green-600',
+                error: 'bg-red-600',
+                info: 'bg-indigo-600'
+            };
+            const toast = document.createElement('div');
+            toast.className = `${colors[type] || colors.info} text-white px-5 py-3 rounded-lg shadow-lg text-sm font-medium fade-in`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // ─── Toggle Add Lead Form ────────────────────────────────────────
+        function toggleForm() {
+            const container = document.getElementById('formContainer');
+            const chevron = document.getElementById('formChevron');
+            container.classList.toggle('hidden');
+            chevron.style.transform = container.classList.contains('hidden') ? '' : 'rotate(180deg)';
+        }
+
+        // ─── Format Time ─────────────────────────────────────────────────
         function formatRelativeTime(dateString) {
+            if (!dateString) return 'N/A';
             const date = new Date(dateString);
             const now = new Date();
             const diffMs = now - date;
-            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-            
-            if (diffDays === 0) return 'Today';
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
             if (diffDays === 1) return '1d ago';
             if (diffDays < 30) return `${diffDays}d ago`;
             if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
             return `${Math.floor(diffDays / 365)}y ago`;
         }
 
-        // Show toast notification
-        function showToast(message, type = 'success') {
-            const toast = document.getElementById('toast');
-            const toastMessage = document.getElementById('toastMessage');
-            
-            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg ${
-                type === 'success' ? 'bg-green-500' : 'bg-red-500'
-            } text-white`;
-            
-            toastMessage.textContent = message;
-            toast.classList.remove('hidden');
-            
-            setTimeout(() => {
-                toast.classList.add('hidden');
-            }, 3000);
+        // ─── Escape HTML ─────────────────────────────────────────────────
+        function esc(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
         }
 
-        // Render leads table
+        // ─── Update Stats ────────────────────────────────────────────────
+        function updateStats(leads) {
+            document.getElementById('statTotal').textContent = leads.length;
+            document.getElementById('statNew').textContent = leads.filter(l => (l.status || 'new') === 'new').length;
+            document.getElementById('statContacted').textContent = leads.filter(l => l.status === 'contacted').length;
+            document.getElementById('statQualified').textContent = leads.filter(l => l.status === 'qualified').length;
+            document.getElementById('statConverted').textContent = leads.filter(l => l.status === 'converted').length;
+        }
+
+        // ─── Render Leads ────────────────────────────────────────────────
         function renderLeads(leads) {
             const tbody = document.getElementById('leadsTableBody');
             const leadCount = document.getElementById('leadCount');
-            
+            const tableContainer = document.getElementById('tableContainer');
+            const emptyState = document.getElementById('emptyState');
+            const loadingState = document.getElementById('loadingState');
+            const errorState = document.getElementById('errorState');
+
+            loadingState.classList.add('hidden');
+            errorState.classList.add('hidden');
+
             leadCount.textContent = leads.length;
-            
+            updateStats(allLeads);
+
             if (leads.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="5" class="px-6 py-8 text-center text-gray-500">
-                            No leads yet. Add your first lead above.
-                        </td>
-                    </tr>
-                `;
+                tableContainer.classList.add('hidden');
+                emptyState.classList.remove('hidden');
                 return;
             }
-            
-            tbody.innerHTML = leads.map(lead => `
-                <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-medium text-gray-900">${lead.buyer_name || 'Unknown'}</div>
+
+            emptyState.classList.add('hidden');
+            tableContainer.classList.remove('hidden');
+
+            tbody.innerHTML = leads.map(lead => {
+                const status = lead.status || 'new';
+                const cfg = STATUS_CONFIG[status] || STATUS_CONFIG['new'];
+                const contact = lead.buyer_email || lead.buyer_phone || '-';
+
+                return `
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-medium text-gray-900">${esc(lead.buyer_name || 'Unknown')}</div>
+                        ${lead.message ? `<div class="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">${esc(lead.message)}</div>` : ''}
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-500 font-mono">${lead.thread_id || 'N/A'}</div>
+                    <td class="px-6 py-4 hidden sm:table-cell">
+                        <div class="text-sm text-gray-600">${esc(contact)}</div>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <select 
+                    <td class="px-6 py-4">
+                        <select
                             onchange="updateLeadStatus('${lead.id}', this.value, this)"
-                            class="px-3 py-1 rounded-full text-xs font-semibold ${statusColors[lead.status || 'new']} border-0 cursor-pointer transition-all duration-200">
-                            <option value="new" ${lead.status === 'new' ? 'selected' : ''}>new</option>
-                            <option value="contacted" ${lead.status === 'contacted' ? 'selected' : ''}>contacted</option>
-                            <option value="qualified" ${lead.status === 'qualified' ? 'selected' : ''}>qualified</option>
-                            <option value="converted" ${lead.status === 'converted' ? 'selected' : ''}>converted</option>
-                            <option value="lost" ${lead.status === 'lost' ? 'selected' : ''}>lost</option>
+                            class="status-badge px-3 py-1 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.text} border-0 cursor-pointer appearance-none pr-6"
+                            style="background-image: url('data:image/svg+xml;utf8,<svg fill=&quot;gray&quot; viewBox=&quot;0 0 20 20&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;><path fill-rule=&quot;evenodd&quot; d=&quot;M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z&quot; clip-rule=&quot;evenodd&quot;/></svg>'); background-repeat: no-repeat; background-position: right 4px center; background-size: 14px;">
+                            ${Object.keys(STATUS_CONFIG).map(s => `<option value="${s}" ${status === s ? 'selected' : ''}>${s}</option>`).join('')}
                         </select>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-semibold text-gray-900">${lead.score || 0}</div>
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-semibold ${(lead.score || 0) >= 70 ? 'text-green-600' : (lead.score || 0) >= 40 ? 'text-yellow-600' : 'text-gray-600'}">${lead.score || 0}</div>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="flex items-center text-sm text-gray-500">
-                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            ${formatRelativeTime(lead.created_at)}
-                        </div>
+                    <td class="px-6 py-4 hidden md:table-cell">
+                        <div class="text-xs text-gray-500">${esc(lead.source || 'manual')}</div>
                     </td>
-                </tr>
-            `).join('');
+                    <td class="px-6 py-4">
+                        <div class="text-xs text-gray-500">${formatRelativeTime(lead.created_at)}</div>
+                    </td>
+                </tr>`;
+            }).join('');
         }
 
-        // Update lead status with color change
-        async function updateLeadStatus(leadId, newStatus, selectElement) {
-            try {
-                // Update color immediately for instant feedback
-                selectElement.className = `px-3 py-1 rounded-full text-xs font-semibold ${statusColors[newStatus]} border-0 cursor-pointer transition-all duration-200`;
-                
-                const { error } = await supabase
-                    .from('leads')
-                    .update({ status: newStatus })
-                    .eq('id', leadId);
-                
-                if (error) throw error;
-                
-                showToast(`Status updated to ${newStatus}`);
-            } catch (error) {
-                console.error('Error updating status:', error);
-                showToast('Failed to update status', 'error');
-                // Refresh to revert on error
-                refreshLeads();
-            }
-        }
-
-        // Load leads
+        // ─── Load Leads ──────────────────────────────────────────────────
         async function loadLeads() {
+            const loadingState = document.getElementById('loadingState');
+            const errorState = document.getElementById('errorState');
+            const tableContainer = document.getElementById('tableContainer');
+            const emptyState = document.getElementById('emptyState');
+
+            loadingState.classList.remove('hidden');
+            errorState.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            emptyState.classList.add('hidden');
+
             try {
-                const { data, error } = await supabase
+                const { data, error } = await db
                     .from('leads')
                     .select('*')
                     .order('created_at', { ascending: false });
-                
+
                 if (error) throw error;
-                
-                renderLeads(data || []);
+
+                allLeads = data || [];
+                setConnectionStatus('connected');
+                renderLeads(allLeads);
             } catch (error) {
                 console.error('Error loading leads:', error);
-                showToast('Failed to load leads', 'error');
+                setConnectionStatus('error');
+                loadingState.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                document.getElementById('errorMessage').textContent = error.message || 'Failed to connect to database.';
             }
         }
 
-        // Refresh leads
+        // ─── Refresh ─────────────────────────────────────────────────────
         function refreshLeads() {
-            loadLeads();
-            showToast('Leads refreshed');
+            const icon = document.getElementById('refreshIcon');
+            icon.classList.add('spinner');
+            loadLeads().finally(() => {
+                setTimeout(() => icon.classList.remove('spinner'), 500);
+            });
+            showToast('Refreshing leads...', 'info');
         }
 
-        // Add lead form submission
+        // ─── Search / Filter ─────────────────────────────────────────────
+        function filterLeads() {
+            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            if (!query) {
+                renderLeads(allLeads);
+                return;
+            }
+            const filtered = allLeads.filter(lead =>
+                (lead.buyer_name || '').toLowerCase().includes(query) ||
+                (lead.buyer_email || '').toLowerCase().includes(query) ||
+                (lead.buyer_phone || '').toLowerCase().includes(query) ||
+                (lead.message || '').toLowerCase().includes(query) ||
+                (lead.status || '').toLowerCase().includes(query) ||
+                (lead.source || '').toLowerCase().includes(query)
+            );
+            renderLeads(filtered);
+        }
+
+        // ─── Update Status ───────────────────────────────────────────────
+        async function updateLeadStatus(leadId, newStatus, selectElement) {
+            const cfg = STATUS_CONFIG[newStatus] || STATUS_CONFIG['new'];
+            // Instant visual feedback
+            selectElement.className = `status-badge px-3 py-1 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.text} border-0 cursor-pointer appearance-none pr-6`;
+
+            try {
+                const { error } = await db
+                    .from('leads')
+                    .update({ status: newStatus })
+                    .eq('id', leadId);
+
+                if (error) throw error;
+
+                // Update local cache
+                const lead = allLeads.find(l => l.id === leadId);
+                if (lead) lead.status = newStatus;
+                updateStats(allLeads);
+
+                showToast(`Status → ${newStatus}`);
+            } catch (error) {
+                console.error('Error updating status:', error);
+                showToast('Failed to update status', 'error');
+                loadLeads();
+            }
+        }
+
+        // ─── Add Lead ────────────────────────────────────────────────────
         document.getElementById('addLeadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            const buyerName = document.getElementById('buyerName').value;
-            const buyerEmail = document.getElementById('buyerEmail').value;
-            const buyerPhone = document.getElementById('buyerPhone').value;
-            const message = document.getElementById('message').value;
-            
+
+            const btn = document.getElementById('submitBtn');
+            const statusEl = document.getElementById('submitStatus');
+            btn.disabled = true;
+            btn.textContent = 'Adding...';
+            statusEl.classList.add('hidden');
+
+            const buyerName = document.getElementById('buyerName').value.trim();
+            const buyerEmail = document.getElementById('buyerEmail').value.trim();
+            const buyerPhone = document.getElementById('buyerPhone').value.trim();
+            const message = document.getElementById('message').value.trim();
+            const score = parseInt(document.getElementById('leadScore').value) || 0;
+
             try {
-                const { error } = await supabase
+                const { error } = await db
                     .from('leads')
                     .insert([{
                         buyer_name: buyerName,
                         buyer_email: buyerEmail || null,
                         buyer_phone: buyerPhone || null,
                         message: message || null,
-                        thread_id: `manual_${Date.now()}`,
+                        thread_id: 'manual_' + Date.now(),
                         status: 'new',
-                        score: 0,
+                        score: score,
                         source: 'manual'
                     }]);
-                
+
                 if (error) throw error;
-                
+
                 showToast('Lead added successfully!');
-                
-                // Reset form
                 e.target.reset();
-                
-                // Reload leads
+                document.getElementById('leadScore').value = '0';
                 loadLeads();
-                
             } catch (error) {
                 console.error('Error adding lead:', error);
-                showToast('Failed to add lead', 'error');
+                showToast('Failed to add lead: ' + (error.message || 'Unknown error'), 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Add Lead';
             }
         });
 
-        // Set up real-time subscription
-        const leadsSubscription = supabase
-            .channel('leads-changes')
-            .on('postgres_changes', 
-                { event: '*', schema: 'public', table: 'leads' },
-                (payload) => {
-                    console.log('Real-time update:', payload);
-                    loadLeads();
-                }
-            )
-            .subscribe();
+        // ─── Real-time Subscription ──────────────────────────────────────
+        function setupRealtime() {
+            if (!db) return;
 
-        // Initial load
+            db.channel('leads-realtime')
+                .on('postgres_changes',
+                    { event: '*', schema: 'public', table: 'leads' },
+                    (payload) => {
+                        console.log('Real-time update:', payload.eventType, payload);
+                        setConnectionStatus('realtime');
+                        loadLeads();
+                    }
+                )
+                .subscribe((status) => {
+                    console.log('Realtime subscription status:', status);
+                    if (status === 'SUBSCRIBED') {
+                        setConnectionStatus('realtime');
+                    }
+                });
+        }
+
+        // ─── Init ────────────────────────────────────────────────────────
         loadLeads();
+        setupRealtime();
     </script>
 </body>
 </html>
