@@ -234,6 +234,7 @@
         let supabaseClient = null;
         let allLeads = [];
         let deleteLeadId = null;
+        let isUpdatingStatus = false;
 
         // ── Utility functions (defined first so they're available everywhere) ──
         const statusConfig = {
@@ -524,6 +525,10 @@
                 showToast('Database not connected. Please refresh the page.');
                 return;
             }
+
+            // Prevent real-time subscription from overwriting during our update
+            isUpdatingStatus = true;
+
             try {
                 const { error } = await supabaseClient
                     .from('leads')
@@ -540,13 +545,25 @@
                     .maybeSingle();
 
                 if (verifyError) {
+                    // Verification query itself failed — don't assume success
                     console.error('Error verifying status update:', verifyError);
+                    showToast('Could not verify status update — refreshing data');
+                    await loadLeads();
+                    return;
                 }
 
-                if (verifyData && verifyData.status !== newStatus) {
+                if (!verifyData) {
+                    // Lead not found (deleted or RLS blocked the read)
+                    showToast('Lead not found — it may have been deleted. Refreshing.');
+                    await loadLeads();
+                    return;
+                }
+
+                if (verifyData.status !== newStatus) {
                     // Update was silently rejected (e.g. by RLS policy)
-                    showToast('Status update failed — please try again or refresh the page');
-                    loadLeads();
+                    console.error('Status update did not persist. Expected:', newStatus, 'Got:', verifyData.status);
+                    showToast('Status did not save — your account may not have edit permissions');
+                    await loadLeads();
                     return;
                 }
 
@@ -564,7 +581,11 @@
             } catch (error) {
                 console.error('Error updating status:', error);
                 showToast('Failed to update status: ' + (error.message || 'Unknown error'));
-                loadLeads(); // Reload to revert visual change on failure
+                await loadLeads(); // Reload to revert visual change on failure
+            } finally {
+                // Re-enable real-time subscription after a short delay
+                // to avoid a late-arriving event overwriting our update
+                setTimeout(() => { isUpdatingStatus = false; }, 2000);
             }
         }
 
@@ -622,7 +643,13 @@
                 .channel('leads-changes')
                 .on('postgres_changes',
                     { event: '*', schema: 'public', table: 'leads' },
-                    () => loadLeads()
+                    () => {
+                        // Skip reload if user just made a status change
+                        // (prevents race condition that reverts the optimistic UI update)
+                        if (!isUpdatingStatus) {
+                            loadLeads();
+                        }
+                    }
                 )
                 .subscribe();
         }
