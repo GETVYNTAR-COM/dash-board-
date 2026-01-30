@@ -3,410 +3,406 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VYNTAR — Never Miss a Qualified Facebook Marketplace Lead Again</title>
-    <meta name="description" content="Track every inquiry, follow up faster, convert more buyers. VYNTAR is the lead tracking dashboard built for UK Facebook Marketplace sellers.">
+    <title>VYNTAR Marketplace - Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        brand: {
-                            50: '#eef2ff',
-                            100: '#e0e7ff',
-                            200: '#c7d2fe',
-                            300: '#a5b4fc',
-                            400: '#818cf8',
-                            500: '#6366f1',
-                            600: '#4f46e5',
-                            700: '#4338ca',
-                            800: '#3730a3',
-                            900: '#312e81',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        html { scroll-behavior: smooth; }
-        .gradient-bg {
-            background: linear-gradient(135deg, #312e81 0%, #4f46e5 50%, #6366f1 100%);
-        }
-        .card-hover:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 20px 40px rgba(79, 70, 229, 0.15);
-        }
-        .card-hover {
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        .pulse-badge {
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-        .fade-in {
-            opacity: 0;
-            transform: translateY(20px);
-            transition: opacity 0.6s ease, transform 0.6s ease;
-        }
-        .fade-in.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    </style>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-white text-gray-900 antialiased">
-
-    <!-- NAV -->
-    <nav class="fixed top-0 w-full bg-white/80 backdrop-blur-md z-50 border-b border-gray-100">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-            <a href="#" class="text-2xl font-bold tracking-tight text-brand-700">VYNTAR</a>
-            <div class="hidden sm:flex items-center gap-8 text-sm font-medium text-gray-600">
-                <a href="#features" class="hover:text-brand-600 transition-colors">Features</a>
-                <a href="#pricing" class="hover:text-brand-600 transition-colors">Pricing</a>
-                <a href="#signup" class="hover:text-brand-600 transition-colors">Sign Up</a>
-            </div>
-            <a href="#signup" class="bg-brand-600 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-700 transition-colors">
-                Get Early Access
-            </a>
-        </div>
-    </nav>
-
-    <!-- HERO -->
-    <section class="gradient-bg pt-32 pb-20 sm:pt-40 sm:pb-28">
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <div class="inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm text-white text-sm font-medium px-4 py-2 rounded-full mb-8 pulse-badge">
-                <span class="w-2 h-2 bg-green-400 rounded-full"></span>
-                12 spots left
-            </div>
-            <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight mb-6">
-                Never Miss a Qualified<br>Facebook Marketplace<br>Lead Again
-            </h1>
-            <p class="text-lg sm:text-xl text-indigo-100 max-w-2xl mx-auto mb-10">
-                Track every inquiry, follow up faster, convert more buyers.
-            </p>
-            <a href="#signup" class="inline-block bg-white text-brand-700 font-bold text-lg px-8 py-4 rounded-xl hover:bg-indigo-50 transition-colors shadow-lg shadow-brand-900/20">
-                Start £1 Trial — First 20 Founders Only
-            </a>
-            <p class="text-indigo-200 text-sm mt-4">No commitment. Cancel anytime.</p>
-        </div>
-    </section>
-
-    <!-- SOCIAL PROOF BAR -->
-    <section class="bg-gray-50 border-b border-gray-100">
-        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-wrap items-center justify-center gap-8 text-sm text-gray-500">
-            <div class="flex items-center gap-2">
-                <svg class="w-5 h-5 text-brand-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                Built for UK sellers
-            </div>
-            <div class="flex items-center gap-2">
-                <svg class="w-5 h-5 text-brand-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                Works on mobile &amp; desktop
-            </div>
-            <div class="flex items-center gap-2">
-                <svg class="w-5 h-5 text-brand-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                Set up in 2 minutes
-            </div>
-            <div class="flex items-center gap-2">
-                <svg class="w-5 h-5 text-brand-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                Founder pricing locked in
-            </div>
-        </div>
-    </section>
-
-    <!-- FEATURES -->
-    <section id="features" class="py-20 sm:py-28">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-16 fade-in">
-                <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Everything you need to close more deals</h2>
-                <p class="text-lg text-gray-500 max-w-2xl mx-auto">Stop losing leads in Messenger threads. VYNTAR gives you a single dashboard to track, manage, and convert every inquiry.</p>
-            </div>
-            <div class="grid md:grid-cols-3 gap-8">
-                <!-- Feature 1 -->
-                <div class="card-hover bg-white border border-gray-200 rounded-2xl p-8 fade-in">
-                    <div class="w-12 h-12 bg-brand-100 rounded-xl flex items-center justify-center mb-6">
-                        <svg class="w-6 h-6 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                        </svg>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-3">Real-Time Lead Tracking</h3>
-                    <p class="text-gray-500 leading-relaxed">Every Facebook Marketplace inquiry captured and displayed instantly. Never lose a lead in a cluttered Messenger inbox again.</p>
-                </div>
-                <!-- Feature 2 -->
-                <div class="card-hover bg-white border border-gray-200 rounded-2xl p-8 fade-in">
-                    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-6">
-                        <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-3">Smart Status Management</h3>
-                    <p class="text-gray-500 leading-relaxed">Mark leads as New, Contacted, Interested, or Sold. See your pipeline at a glance and know exactly who to follow up with next.</p>
-                </div>
-                <!-- Feature 3 -->
-                <div class="card-hover bg-white border border-gray-200 rounded-2xl p-8 fade-in">
-                    <div class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center mb-6">
-                        <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                        </svg>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-3">Search &amp; Filter</h3>
-                    <p class="text-gray-500 leading-relaxed">Find any lead in seconds. Filter by status, search by name or product, and sort by date. Your leads, organized your way.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- PRICING -->
-    <section id="pricing" class="py-20 sm:py-28 bg-gray-50">
-        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-16 fade-in">
-                <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Simple, honest pricing</h2>
-                <p class="text-lg text-gray-500">No hidden fees. No long contracts. Cancel anytime.</p>
-            </div>
-            <div class="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
-                <!-- Founder Plan -->
-                <div class="card-hover relative bg-white border-2 border-brand-500 rounded-2xl p-8 fade-in">
-                    <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-sm font-bold px-4 py-1 rounded-full">
-                        RECOMMENDED
-                    </div>
-                    <h3 class="text-lg font-bold text-brand-600 mb-2">Founder Plan</h3>
-                    <div class="flex items-baseline gap-1 mb-1">
-                        <span class="text-5xl font-extrabold text-gray-900">£1</span>
-                        <span class="text-gray-500">for 30 days</span>
-                    </div>
-                    <p class="text-sm text-gray-400 mb-6">then £25/month · locked-in rate</p>
-                    <ul class="space-y-3 mb-8">
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-brand-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Unlimited leads
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-brand-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Real-time sync
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-brand-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Mobile responsive dashboard
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-brand-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Search &amp; filter
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-brand-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Priority support
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-brand-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Early access to new features
-                        </li>
-                    </ul>
-                    <a href="#signup" class="block w-full text-center bg-brand-600 text-white font-bold py-3 rounded-xl hover:bg-brand-700 transition-colors">
-                        Claim Founder Spot
-                    </a>
-                </div>
-                <!-- Regular Plan -->
-                <div class="card-hover bg-white border border-gray-200 rounded-2xl p-8 fade-in">
-                    <h3 class="text-lg font-bold text-gray-700 mb-2">Regular Plan</h3>
-                    <div class="flex items-baseline gap-1 mb-1">
-                        <span class="text-5xl font-extrabold text-gray-900">£25</span>
-                        <span class="text-gray-500">/month</span>
-                    </div>
-                    <p class="text-sm text-gray-400 mb-6">standard pricing</p>
-                    <ul class="space-y-3 mb-8">
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Unlimited leads
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Real-time sync
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Mobile responsive dashboard
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Search &amp; filter
-                        </li>
-                        <li class="flex items-center gap-3 text-sm text-gray-600">
-                            <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Email support
-                        </li>
-                    </ul>
-                    <a href="#signup" class="block w-full text-center bg-gray-100 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-200 transition-colors">
-                        Get Started
-                    </a>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- SIGNUP FORM -->
-    <section id="signup" class="py-20 sm:py-28">
-        <div class="max-w-xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-12 fade-in">
-                <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Claim your founder spot</h2>
-                <p class="text-lg text-gray-500">Join the first 20 founders and lock in £1 for 30 days.</p>
-            </div>
-            <form id="signup-form" class="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm fade-in">
-                <div class="space-y-5">
-                    <div>
-                        <label for="name" class="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
-                        <input type="text" id="name" name="name" required placeholder="John Smith"
-                            class="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow">
-                    </div>
-                    <div>
-                        <label for="email" class="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
-                        <input type="email" id="email" name="email" required placeholder="john@example.com"
-                            class="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow">
-                    </div>
-                    <div>
-                        <label for="phone" class="block text-sm font-medium text-gray-700 mb-1.5">Phone Number</label>
-                        <input type="tel" id="phone" name="phone" placeholder="+44 7700 900000"
-                            class="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow">
-                    </div>
-                    <div>
-                        <label for="message" class="block text-sm font-medium text-gray-700 mb-1.5">Message <span class="text-gray-400">(optional)</span></label>
-                        <textarea id="message" name="message" rows="3" placeholder="Tell us about your FB Marketplace business..."
-                            class="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-shadow resize-none"></textarea>
-                    </div>
-                </div>
-                <button type="submit" id="submit-btn"
-                    class="mt-6 w-full bg-brand-600 text-white font-bold py-3.5 rounded-xl hover:bg-brand-700 transition-colors flex items-center justify-center gap-2">
-                    <span id="btn-text">Start £1 Trial — First 20 Founders Only</span>
-                    <svg id="btn-spinner" class="hidden w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <svg class="w-8 h-8 text-blue-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                     </svg>
-                </button>
-                <div id="form-message" class="hidden mt-4 text-center text-sm font-medium rounded-xl p-3"></div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">VYNTAR Marketplace</h1>
+                        <p class="text-sm text-gray-600">Real-time lead management dashboard</p>
+                    </div>
+                </div>
+                <div class="flex items-center">
+                    <div class="flex items-center mr-4">
+                        <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                        <span class="text-sm text-gray-600">Connected</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="text-sm font-medium text-gray-600 mb-1">TOTAL LEADS</div>
+                <div id="totalLeads" class="text-3xl font-bold text-gray-900">0</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-blue-200 p-4">
+                <div class="text-sm font-medium text-blue-600 mb-1">NEW</div>
+                <div id="newLeads" class="text-3xl font-bold text-blue-600">0</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-yellow-200 p-4">
+                <div class="text-sm font-medium text-yellow-600 mb-1">CONTACTED</div>
+                <div id="contactedLeads" class="text-3xl font-bold text-yellow-600">0</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-green-200 p-4">
+                <div class="text-sm font-medium text-green-600 mb-1">QUALIFIED</div>
+                <div id="qualifiedLeads" class="text-3xl font-bold text-green-600">0</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm border border-emerald-200 p-4">
+                <div class="text-sm font-medium text-emerald-600 mb-1">CONVERTED</div>
+                <div id="convertedLeads" class="text-3xl font-bold text-emerald-600">0</div>
+            </div>
+        </div>
+
+        <!-- Add Lead Form -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+            <button id="toggleFormBtn" class="flex items-center text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors">
+                <svg id="toggleIcon" class="w-5 h-5 mr-2 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                Add Lead
+            </button>
+            
+            <form id="addLeadForm" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 hidden">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Buyer Name *</label>
+                    <input type="text" id="buyerName" required 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                           placeholder="John Smith">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" id="buyerEmail" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                           placeholder="john@example.com">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input type="tel" id="buyerPhone" 
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                           placeholder="07123 456789">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Initial Score (0-100)</label>
+                    <input type="number" id="leadScore" min="0" max="100" value="0"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Message / Notes</label>
+                    <textarea id="leadMessage" rows="3"
+                              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Lead inquiry or notes..."></textarea>
+                </div>
+                <div class="md:col-span-2">
+                    <button type="submit" 
+                            class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+                        Add Lead
+                    </button>
+                </div>
             </form>
         </div>
-    </section>
 
-    <!-- FAQ -->
-    <section class="py-20 sm:py-28 bg-gray-50">
-        <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 text-center mb-12 fade-in">Frequently asked questions</h2>
-            <div class="space-y-4 fade-in">
-                <details class="bg-white border border-gray-200 rounded-xl p-6 group" open>
-                    <summary class="font-semibold text-gray-900 cursor-pointer flex items-center justify-between">
-                        What is VYNTAR?
-                        <svg class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    </summary>
-                    <p class="mt-3 text-gray-500 leading-relaxed">VYNTAR is a lead tracking dashboard built specifically for UK Facebook Marketplace sellers. It captures every inquiry, lets you manage lead statuses, and helps you follow up faster to close more deals.</p>
-                </details>
-                <details class="bg-white border border-gray-200 rounded-xl p-6 group">
-                    <summary class="font-semibold text-gray-900 cursor-pointer flex items-center justify-between">
-                        What does the £1 trial include?
-                        <svg class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    </summary>
-                    <p class="mt-3 text-gray-500 leading-relaxed">Full access to every feature for 30 days — unlimited leads, real-time sync, smart status management, search and filter. After 30 days, it's £25/month. Cancel anytime.</p>
-                </details>
-                <details class="bg-white border border-gray-200 rounded-xl p-6 group">
-                    <summary class="font-semibold text-gray-900 cursor-pointer flex items-center justify-between">
-                        Can I cancel anytime?
-                        <svg class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    </summary>
-                    <p class="mt-3 text-gray-500 leading-relaxed">Yes, absolutely. No long-term contracts or hidden fees. You can cancel your subscription at any time from your account settings.</p>
-                </details>
-                <details class="bg-white border border-gray-200 rounded-xl p-6 group">
-                    <summary class="font-semibold text-gray-900 cursor-pointer flex items-center justify-between">
-                        Does it work on mobile?
-                        <svg class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    </summary>
-                    <p class="mt-3 text-gray-500 leading-relaxed">Yes. VYNTAR is fully responsive and works on any device — phone, tablet, or desktop. Manage your leads on the go.</p>
-                </details>
-            </div>
-        </div>
-    </section>
-
-    <!-- FOOTER -->
-    <footer class="bg-gray-900 text-gray-400 py-12">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex flex-col sm:flex-row items-center justify-between gap-6">
-                <div>
-                    <span class="text-xl font-bold text-white">VYNTAR</span>
-                    <p class="text-sm mt-1">Built for UK Facebook Marketplace sellers</p>
-                </div>
-                <div class="flex items-center gap-6 text-sm">
-                    <a href="mailto:hello@getvyntar.com" class="hover:text-white transition-colors">hello@getvyntar.com</a>
-                    <a href="#features" class="hover:text-white transition-colors">Features</a>
-                    <a href="#pricing" class="hover:text-white transition-colors">Pricing</a>
+        <!-- Leads Table -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xl font-bold text-gray-900">Leads (<span id="leadsCount">0</span>)</h2>
+                    <div class="flex items-center space-x-4">
+                        <input type="text" id="searchInput" placeholder="Search leads..." 
+                               class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64">
+                        <button onclick="loadLeads()" 
+                                class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                            🔄 Refresh
+                        </button>
+                    </div>
                 </div>
             </div>
-            <div class="border-t border-gray-800 mt-8 pt-8 text-center text-sm">
-                <p>&copy; 2026 VYNTAR. All rights reserved.</p>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buyer</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Added</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Delete</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leadsTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Leads will be inserted here -->
+                    </tbody>
+                </table>
             </div>
         </div>
-    </footer>
+    </main>
 
-    <!-- SUPABASE & FORM HANDLING -->
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-lg font-bold text-gray-900 mb-2">Delete Lead?</h3>
+            <p class="text-gray-600 mb-6">Delete <span id="deleteBuyerName" class="font-semibold"></span>? This action cannot be undone.</p>
+            <div class="flex space-x-4">
+                <button onclick="closeDeleteModal()" 
+                        class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">
+                    Cancel
+                </button>
+                <button onclick="confirmDeleteLead()" 
+                        class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="hidden fixed bottom-4 right-4 bg-gray-900 text-white px-6 py-3 rounded-lg shadow-lg">
+        <span id="toastMessage"></span>
+    </div>
+
     <script>
-        const SUPABASE_URL = 'https://hfchmjmhkiqsibxtiwsk.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_WMD4rdIiqCeNX8qYsOnelA_zog_foYo';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        // Initialize Supabase
+        const supabase = window.supabase.createClient(
+            'https://hfchmjmhkiqsibxtiwsk.supabase.co',
+            'sb_publishable_WMD4rdIiqCeNX8qYsOnelA_zog_foYo'
+        );
 
-        const form = document.getElementById('signup-form');
-        const submitBtn = document.getElementById('submit-btn');
-        const btnText = document.getElementById('btn-text');
-        const btnSpinner = document.getElementById('btn-spinner');
-        const formMessage = document.getElementById('form-message');
+        let allLeads = [];
+        let deleteLeadId = null;
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
+        // Toggle Add Lead Form
+        document.getElementById('toggleFormBtn').addEventListener('click', () => {
+            const form = document.getElementById('addLeadForm');
+            const icon = document.getElementById('toggleIcon');
+            form.classList.toggle('hidden');
+            icon.style.transform = form.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(45deg)';
+        });
 
-            // Disable button and show spinner
-            submitBtn.disabled = true;
-            btnText.textContent = 'Submitting...';
-            btnSpinner.classList.remove('hidden');
-            formMessage.classList.add('hidden');
-
-            const name = document.getElementById('name').value.trim();
-            const email = document.getElementById('email').value.trim();
-            const phone = document.getElementById('phone').value.trim();
-            const message = document.getElementById('message').value.trim();
-
+        // Load leads
+        async function loadLeads() {
             try {
                 const { data, error } = await supabase
-                    .from('founder_signups')
-                    .insert([{ name, email, phone, message }]);
+                    .from('leads')
+                    .select('*')
+                    .order('created_at', { ascending: false });
 
                 if (error) throw error;
 
-                // Show success
-                formMessage.textContent = 'You\'re in! We\'ll be in touch soon with your founder access.';
-                formMessage.className = 'mt-4 text-center text-sm font-medium rounded-xl p-3 bg-green-50 text-green-700 border border-green-200';
-                formMessage.classList.remove('hidden');
-                form.reset();
-            } catch (err) {
-                console.error('Signup error:', err);
-                formMessage.textContent = 'Something went wrong. Please email hello@getvyntar.com directly.';
-                formMessage.className = 'mt-4 text-center text-sm font-medium rounded-xl p-3 bg-red-50 text-red-700 border border-red-200';
-                formMessage.classList.remove('hidden');
-            } finally {
-                submitBtn.disabled = false;
-                btnText.textContent = 'Start £1 Trial — First 20 Founders Only';
-                btnSpinner.classList.add('hidden');
+                allLeads = data || [];
+                renderLeads(allLeads);
+                updateStats(allLeads);
+            } catch (error) {
+                console.error('Error loading leads:', error);
+                showToast('Failed to load leads');
+            }
+        }
+
+        // Render leads table
+        function renderLeads(leads) {
+            const tbody = document.getElementById('leadsTableBody');
+            document.getElementById('leadsCount').textContent = leads.length;
+
+            if (leads.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-gray-500">No leads yet. Add your first lead above!</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = leads.map(lead => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4">
+                        <div class="font-medium text-gray-900">${escapeHtml(lead.buyer_name)}</div>
+                        ${lead.message ? `<div class="text-sm text-gray-500">${escapeHtml(lead.message).substring(0, 50)}...</div>` : ''}
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-900">
+                        ${lead.buyer_email ? `<div>${escapeHtml(lead.buyer_email)}</div>` : ''}
+                        ${lead.buyer_phone ? `<div class="text-gray-500">${escapeHtml(lead.buyer_phone)}</div>` : ''}
+                    </td>
+                    <td class="px-6 py-4">
+                        <select onchange="updateLeadStatus('${lead.id}', this.value)" 
+                                class="px-3 py-1 rounded-full text-sm font-medium border-0 ${getStatusClass(lead.status)}">
+                            <option value="new" ${lead.status === 'new' ? 'selected' : ''}>New</option>
+                            <option value="contacted" ${lead.status === 'contacted' ? 'selected' : ''}>Contacted</option>
+                            <option value="qualified" ${lead.status === 'qualified' ? 'selected' : ''}>Qualified</option>
+                            <option value="converted" ${lead.status === 'converted' ? 'selected' : ''}>Converted</option>
+                            <option value="lost" ${lead.status === 'lost' ? 'selected' : ''}>Lost</option>
+                        </select>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-900">${lead.score || 0}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${escapeHtml(lead.source || 'manual')}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${formatDate(lead.created_at)}</td>
+                    <td class="px-6 py-4">
+                        <button onclick="openDeleteModal('${lead.id}', '${escapeHtml(lead.buyer_name)}')" 
+                                class="text-gray-400 hover:text-red-600 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Update stats
+        function updateStats(leads) {
+            document.getElementById('totalLeads').textContent = leads.length;
+            document.getElementById('newLeads').textContent = leads.filter(l => l.status === 'new').length;
+            document.getElementById('contactedLeads').textContent = leads.filter(l => l.status === 'contacted').length;
+            document.getElementById('qualifiedLeads').textContent = leads.filter(l => l.status === 'qualified').length;
+            document.getElementById('convertedLeads').textContent = leads.filter(l => l.status === 'converted').length;
+        }
+
+        // Add lead
+        document.getElementById('addLeadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const leadData = {
+                buyer_name: document.getElementById('buyerName').value,
+                buyer_email: document.getElementById('buyerEmail').value || null,
+                buyer_phone: document.getElementById('buyerPhone').value || null,
+                message: document.getElementById('leadMessage').value || null,
+                score: parseInt(document.getElementById('leadScore').value) || 0,
+                status: 'new',
+                source: 'manual',
+                thread_id: 'manual_' + Date.now(),
+                created_at: new Date().toISOString()
+            };
+
+            try {
+                const { error } = await supabase.from('leads').insert([leadData]);
+                if (error) throw error;
+
+                showToast('Lead added successfully');
+                document.getElementById('addLeadForm').reset();
+                document.getElementById('addLeadForm').classList.add('hidden');
+                document.getElementById('toggleIcon').style.transform = 'rotate(0deg)';
+                loadLeads();
+            } catch (error) {
+                console.error('Error adding lead:', error);
+                showToast('Failed to add lead');
             }
         });
 
-        // Fade-in animation on scroll
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                }
-            });
-        }, { threshold: 0.1 });
+        // Update lead status
+        async function updateLeadStatus(leadId, newStatus) {
+            try {
+                const { error } = await supabase
+                    .from('leads')
+                    .update({ status: newStatus, updated_at: new Date().toISOString() })
+                    .eq('id', leadId);
 
-        document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+                if (error) throw error;
+
+                showToast('Status updated');
+                loadLeads();
+            } catch (error) {
+                console.error('Error updating status:', error);
+                showToast('Failed to update status');
+            }
+        }
+
+        // Delete modal functions
+        function openDeleteModal(leadId, buyerName) {
+            deleteLeadId = leadId;
+            document.getElementById('deleteBuyerName').textContent = buyerName;
+            document.getElementById('deleteModal').classList.remove('hidden');
+        }
+
+        function closeDeleteModal() {
+            deleteLeadId = null;
+            document.getElementById('deleteModal').classList.add('hidden');
+        }
+
+        async function confirmDeleteLead() {
+            if (!deleteLeadId) return;
+
+            try {
+                const { error } = await supabase
+                    .from('leads')
+                    .delete()
+                    .eq('id', deleteLeadId);
+
+                if (error) throw error;
+
+                showToast('Lead deleted successfully');
+                closeDeleteModal();
+                loadLeads();
+            } catch (error) {
+                console.error('Error deleting lead:', error);
+                showToast('Failed to delete lead');
+            }
+        }
+
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filtered = allLeads.filter(lead =>
+                lead.buyer_name?.toLowerCase().includes(searchTerm) ||
+                lead.buyer_email?.toLowerCase().includes(searchTerm) ||
+                lead.buyer_phone?.toLowerCase().includes(searchTerm) ||
+                lead.message?.toLowerCase().includes(searchTerm)
+            );
+            renderLeads(filtered);
+        });
+
+        // Real-time subscription
+        const leadsSubscription = supabase
+            .channel('leads-changes')
+            .on('postgres_changes', 
+                { event: '*', schema: 'public', table: 'leads' },
+                () => loadLeads()
+            )
+            .subscribe();
+
+        // Utility functions
+        function getStatusClass(status) {
+            const classes = {
+                'new': 'bg-blue-100 text-blue-800',
+                'contacted': 'bg-yellow-100 text-yellow-800',
+                'qualified': 'bg-green-100 text-green-800',
+                'converted': 'bg-emerald-100 text-emerald-800',
+                'lost': 'bg-red-100 text-red-800'
+            };
+            return classes[status] || 'bg-gray-100 text-gray-800';
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            return date.toLocaleDateString();
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            toastMessage.textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        // Initial load
+        loadLeads();
     </script>
 </body>
 </html>
