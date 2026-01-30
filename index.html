@@ -509,19 +509,12 @@
                 return;
             }
             try {
-                const { data, error } = await supabaseClient
+                const { error } = await supabaseClient
                     .from('leads')
                     .update({ status: newStatus })
-                    .eq('id', leadId)
-                    .select();
+                    .eq('id', leadId);
 
                 if (error) throw error;
-
-                if (!data || data.length === 0) {
-                    showToast('Lead not found. It may have been deleted.');
-                    loadLeads();
-                    return;
-                }
 
                 const cfg = statusConfig[newStatus] || statusConfig['new'];
                 showToast('Status updated to ' + cfg.label);
