@@ -175,207 +175,12 @@
     </div>
 
     <script>
-        // Initialize Supabase
-        const supabase = window.supabase.createClient(
-            'https://hfchmjmhkiqsibxtiwsk.supabase.co',
-            'sb_publishable_WMD4rdIiqCeNX8qYsOnelA_zog_foYo'
-        );
-
+        // ── Variables ──
+        let supabaseClient = null;
         let allLeads = [];
         let deleteLeadId = null;
 
-        // Toggle Add Lead Form
-        document.getElementById('toggleFormBtn').addEventListener('click', (e) => {
-            e.preventDefault();
-            const form = document.getElementById('addLeadForm');
-            const icon = document.getElementById('toggleIcon');
-            const isHidden = form.classList.contains('hidden');
-            
-            if (isHidden) {
-                form.classList.remove('hidden');
-                icon.style.transform = 'rotate(45deg)';
-            } else {
-                form.classList.add('hidden');
-                icon.style.transform = 'rotate(0deg)';
-            }
-        });
-
-        // Load leads
-        async function loadLeads() {
-            try {
-                const { data, error } = await supabase
-                    .from('leads')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-
-                if (error) throw error;
-
-                allLeads = data || [];
-                renderLeads(allLeads);
-                updateStats(allLeads);
-            } catch (error) {
-                console.error('Error loading leads:', error);
-                showToast('Failed to load leads');
-            }
-        }
-
-        // Render leads table
-        function renderLeads(leads) {
-            const tbody = document.getElementById('leadsTableBody');
-            document.getElementById('leadsCount').textContent = leads.length;
-
-            if (leads.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-gray-500">No leads yet. Add your first lead above!</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = leads.map(lead => `
-                <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4">
-                        <div class="font-medium text-gray-900">${escapeHtml(lead.buyer_name)}</div>
-                        ${lead.message ? `<div class="text-sm text-gray-500">${escapeHtml(lead.message).substring(0, 50)}...</div>` : ''}
-                    </td>
-                    <td class="px-6 py-4 text-sm text-gray-900">
-                        ${lead.buyer_email ? `<div>${escapeHtml(lead.buyer_email)}</div>` : ''}
-                        ${lead.buyer_phone ? `<div class="text-gray-500">${escapeHtml(lead.buyer_phone)}</div>` : ''}
-                    </td>
-                    <td class="px-6 py-4">
-                        <select onchange="updateLeadStatus('${lead.id}', this.value)" 
-                                class="px-3 py-1 rounded-full text-sm font-medium border-0 ${getStatusClass(lead.status)}">
-                            <option value="new" ${lead.status === 'new' ? 'selected' : ''}>New</option>
-                            <option value="contacted" ${lead.status === 'contacted' ? 'selected' : ''}>Contacted</option>
-                            <option value="qualified" ${lead.status === 'qualified' ? 'selected' : ''}>Qualified</option>
-                            <option value="converted" ${lead.status === 'converted' ? 'selected' : ''}>Converted</option>
-                            <option value="lost" ${lead.status === 'lost' ? 'selected' : ''}>Lost</option>
-                        </select>
-                    </td>
-                    <td class="px-6 py-4 text-sm text-gray-900">${lead.score || 0}</td>
-                    <td class="px-6 py-4 text-sm text-gray-500">${escapeHtml(lead.source || 'manual')}</td>
-                    <td class="px-6 py-4 text-sm text-gray-500">${formatDate(lead.created_at)}</td>
-                    <td class="px-6 py-4">
-                        <button onclick="openDeleteModal('${lead.id}', '${escapeHtml(lead.buyer_name)}')" 
-                                class="text-gray-400 hover:text-red-600 transition-colors">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                            </svg>
-                        </button>
-                    </td>
-                </tr>
-            `).join('');
-        }
-
-        // Update stats
-        function updateStats(leads) {
-            document.getElementById('totalLeads').textContent = leads.length;
-            document.getElementById('newLeads').textContent = leads.filter(l => l.status === 'new').length;
-            document.getElementById('contactedLeads').textContent = leads.filter(l => l.status === 'contacted').length;
-            document.getElementById('qualifiedLeads').textContent = leads.filter(l => l.status === 'qualified').length;
-            document.getElementById('convertedLeads').textContent = leads.filter(l => l.status === 'converted').length;
-        }
-
-        // Add lead
-        document.getElementById('addLeadForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const leadData = {
-                buyer_name: document.getElementById('buyerName').value,
-                buyer_email: document.getElementById('buyerEmail').value || null,
-                buyer_phone: document.getElementById('buyerPhone').value || null,
-                message: document.getElementById('leadMessage').value || null,
-                score: parseInt(document.getElementById('leadScore').value) || 0,
-                status: 'new',
-                source: 'manual',
-                thread_id: 'manual_' + Date.now(),
-                created_at: new Date().toISOString()
-            };
-
-            try {
-                const { error } = await supabase.from('leads').insert([leadData]);
-                if (error) throw error;
-
-                showToast('Lead added successfully');
-                document.getElementById('addLeadForm').reset();
-                document.getElementById('addLeadForm').classList.add('hidden');
-                document.getElementById('toggleIcon').style.transform = 'rotate(0deg)';
-                loadLeads();
-            } catch (error) {
-                console.error('Error adding lead:', error);
-                showToast('Failed to add lead');
-            }
-        });
-
-        // Update lead status
-        async function updateLeadStatus(leadId, newStatus) {
-            try {
-                const { error } = await supabase
-                    .from('leads')
-                    .update({ status: newStatus, updated_at: new Date().toISOString() })
-                    .eq('id', leadId);
-
-                if (error) throw error;
-
-                showToast('Status updated');
-                loadLeads();
-            } catch (error) {
-                console.error('Error updating status:', error);
-                showToast('Failed to update status');
-            }
-        }
-
-        // Delete modal functions
-        function openDeleteModal(leadId, buyerName) {
-            deleteLeadId = leadId;
-            document.getElementById('deleteBuyerName').textContent = buyerName;
-            document.getElementById('deleteModal').classList.remove('hidden');
-        }
-
-        function closeDeleteModal() {
-            deleteLeadId = null;
-            document.getElementById('deleteModal').classList.add('hidden');
-        }
-
-        async function confirmDeleteLead() {
-            if (!deleteLeadId) return;
-
-            try {
-                const { error } = await supabase
-                    .from('leads')
-                    .delete()
-                    .eq('id', deleteLeadId);
-
-                if (error) throw error;
-
-                showToast('Lead deleted successfully');
-                closeDeleteModal();
-                loadLeads();
-            } catch (error) {
-                console.error('Error deleting lead:', error);
-                showToast('Failed to delete lead');
-            }
-        }
-
-        // Search functionality
-        document.getElementById('searchInput').addEventListener('input', (e) => {
-            const searchTerm = e.target.value.toLowerCase();
-            const filtered = allLeads.filter(lead =>
-                lead.buyer_name?.toLowerCase().includes(searchTerm) ||
-                lead.buyer_email?.toLowerCase().includes(searchTerm) ||
-                lead.buyer_phone?.toLowerCase().includes(searchTerm) ||
-                lead.message?.toLowerCase().includes(searchTerm)
-            );
-            renderLeads(filtered);
-        });
-
-        // Real-time subscription
-        const leadsSubscription = supabase
-            .channel('leads-changes')
-            .on('postgres_changes', 
-                { event: '*', schema: 'public', table: 'leads' },
-                () => loadLeads()
-            )
-            .subscribe();
-
-        // Utility functions
+        // ── Utility functions (defined first so they're available everywhere) ──
         function getStatusClass(status) {
             const classes = {
                 'new': 'bg-blue-100 text-blue-800',
@@ -417,8 +222,245 @@
             setTimeout(() => toast.classList.add('hidden'), 3000);
         }
 
-        // Initial load
-        loadLeads();
+        // ── Initialize Supabase (with error handling) ──
+        try {
+            if (window.supabase && typeof window.supabase.createClient === 'function') {
+                supabaseClient = window.supabase.createClient(
+                    'https://hfchmjmhkiqsibxtiwsk.supabase.co',
+                    'sb_publishable_WMD4rdIiqCeNX8qYsOnelA_zog_foYo'
+                );
+            } else {
+                console.error('Supabase library failed to load from CDN');
+            }
+        } catch (err) {
+            console.error('Failed to initialize Supabase:', err);
+        }
+
+        // ── Toggle Add Lead Form ──
+        document.getElementById('toggleFormBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const form = document.getElementById('addLeadForm');
+            const icon = document.getElementById('toggleIcon');
+            const isHidden = form.classList.contains('hidden');
+
+            if (isHidden) {
+                form.classList.remove('hidden');
+                icon.style.transform = 'rotate(45deg)';
+            } else {
+                form.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
+        });
+
+        // ── Load leads ──
+        async function loadLeads() {
+            if (!supabaseClient) {
+                console.error('Cannot load leads: Supabase not connected');
+                return;
+            }
+            try {
+                const { data, error } = await supabaseClient
+                    .from('leads')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                allLeads = data || [];
+                renderLeads(allLeads);
+                updateStats(allLeads);
+            } catch (error) {
+                console.error('Error loading leads:', error);
+                showToast('Failed to load leads: ' + (error.message || 'Unknown error'));
+            }
+        }
+
+        // ── Render leads table ──
+        function renderLeads(leads) {
+            const tbody = document.getElementById('leadsTableBody');
+            document.getElementById('leadsCount').textContent = leads.length;
+
+            if (leads.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-gray-500">No leads yet. Add your first lead above!</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = leads.map(lead => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4">
+                        <div class="font-medium text-gray-900">${escapeHtml(lead.buyer_name)}</div>
+                        ${lead.message ? `<div class="text-sm text-gray-500">${escapeHtml(lead.message).substring(0, 50)}...</div>` : ''}
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-900">
+                        ${lead.buyer_email ? `<div>${escapeHtml(lead.buyer_email)}</div>` : ''}
+                        ${lead.buyer_phone ? `<div class="text-gray-500">${escapeHtml(lead.buyer_phone)}</div>` : ''}
+                    </td>
+                    <td class="px-6 py-4">
+                        <select onchange="updateLeadStatus('${lead.id}', this.value)"
+                                class="px-3 py-1 rounded-full text-sm font-medium border-0 ${getStatusClass(lead.status)}">
+                            <option value="new" ${lead.status === 'new' ? 'selected' : ''}>New</option>
+                            <option value="contacted" ${lead.status === 'contacted' ? 'selected' : ''}>Contacted</option>
+                            <option value="qualified" ${lead.status === 'qualified' ? 'selected' : ''}>Qualified</option>
+                            <option value="converted" ${lead.status === 'converted' ? 'selected' : ''}>Converted</option>
+                            <option value="lost" ${lead.status === 'lost' ? 'selected' : ''}>Lost</option>
+                        </select>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-900">${lead.score || 0}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${escapeHtml(lead.source || 'manual')}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${formatDate(lead.created_at)}</td>
+                    <td class="px-6 py-4">
+                        <button onclick="openDeleteModal('${lead.id}', '${escapeHtml(lead.buyer_name)}')"
+                                class="text-gray-400 hover:text-red-600 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // ── Update stats ──
+        function updateStats(leads) {
+            document.getElementById('totalLeads').textContent = leads.length;
+            document.getElementById('newLeads').textContent = leads.filter(l => l.status === 'new').length;
+            document.getElementById('contactedLeads').textContent = leads.filter(l => l.status === 'contacted').length;
+            document.getElementById('qualifiedLeads').textContent = leads.filter(l => l.status === 'qualified').length;
+            document.getElementById('convertedLeads').textContent = leads.filter(l => l.status === 'converted').length;
+        }
+
+        // ── Add lead (form submission) ──
+        document.getElementById('addLeadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!supabaseClient) {
+                showToast('Database not connected. Please refresh the page.');
+                return;
+            }
+
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Adding...';
+            submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            const leadData = {
+                buyer_name: document.getElementById('buyerName').value.trim(),
+                buyer_email: document.getElementById('buyerEmail').value.trim() || null,
+                buyer_phone: document.getElementById('buyerPhone').value.trim() || null,
+                message: document.getElementById('leadMessage').value.trim() || null,
+                score: parseInt(document.getElementById('leadScore').value) || 0,
+                status: 'new',
+                source: 'manual',
+                thread_id: 'manual_' + Date.now(),
+                created_at: new Date().toISOString()
+            };
+
+            try {
+                const { error } = await supabaseClient.from('leads').insert([leadData]);
+                if (error) throw error;
+
+                showToast('Lead added successfully');
+                document.getElementById('addLeadForm').reset();
+                document.getElementById('addLeadForm').classList.add('hidden');
+                document.getElementById('toggleIcon').style.transform = 'rotate(0deg)';
+                loadLeads();
+            } catch (error) {
+                console.error('Error adding lead:', error);
+                showToast('Failed to add lead: ' + (error.message || 'Unknown error'));
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Add Lead';
+                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        });
+
+        // ── Update lead status ──
+        async function updateLeadStatus(leadId, newStatus) {
+            if (!supabaseClient) {
+                showToast('Database not connected. Please refresh the page.');
+                return;
+            }
+            try {
+                const { error } = await supabaseClient
+                    .from('leads')
+                    .update({ status: newStatus, updated_at: new Date().toISOString() })
+                    .eq('id', leadId);
+
+                if (error) throw error;
+
+                showToast('Status updated');
+                loadLeads();
+            } catch (error) {
+                console.error('Error updating status:', error);
+                showToast('Failed to update status: ' + (error.message || 'Unknown error'));
+            }
+        }
+
+        // ── Delete modal functions ──
+        function openDeleteModal(leadId, buyerName) {
+            deleteLeadId = leadId;
+            document.getElementById('deleteBuyerName').textContent = buyerName;
+            document.getElementById('deleteModal').classList.remove('hidden');
+        }
+
+        function closeDeleteModal() {
+            deleteLeadId = null;
+            document.getElementById('deleteModal').classList.add('hidden');
+        }
+
+        async function confirmDeleteLead() {
+            if (!deleteLeadId) return;
+            if (!supabaseClient) {
+                showToast('Database not connected. Please refresh the page.');
+                return;
+            }
+
+            try {
+                const { error } = await supabaseClient
+                    .from('leads')
+                    .delete()
+                    .eq('id', deleteLeadId);
+
+                if (error) throw error;
+
+                showToast('Lead deleted successfully');
+                closeDeleteModal();
+                loadLeads();
+            } catch (error) {
+                console.error('Error deleting lead:', error);
+                showToast('Failed to delete lead: ' + (error.message || 'Unknown error'));
+            }
+        }
+
+        // ── Search functionality ──
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filtered = allLeads.filter(lead =>
+                lead.buyer_name?.toLowerCase().includes(searchTerm) ||
+                lead.buyer_email?.toLowerCase().includes(searchTerm) ||
+                lead.buyer_phone?.toLowerCase().includes(searchTerm) ||
+                lead.message?.toLowerCase().includes(searchTerm)
+            );
+            renderLeads(filtered);
+        });
+
+        // ── Real-time subscription ──
+        if (supabaseClient) {
+            supabaseClient
+                .channel('leads-changes')
+                .on('postgres_changes',
+                    { event: '*', schema: 'public', table: 'leads' },
+                    () => loadLeads()
+                )
+                .subscribe();
+        }
+
+        // ── Initial load ──
+        if (supabaseClient) {
+            loadLeads();
+        } else {
+            showToast('Database connection failed. Please check your connection and refresh.');
+        }
     </script>
 </body>
 </html>
