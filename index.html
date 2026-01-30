@@ -6,6 +6,61 @@
     <title>VYNTAR Marketplace - Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        /* Custom status dropdown styling */
+        .status-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .status-badge {
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease;
+        }
+        .status-badge:hover {
+            opacity: 0.85;
+            transform: scale(1.02);
+        }
+        .status-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 50;
+            min-width: 160px;
+            margin-top: 4px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+            overflow: hidden;
+        }
+        .status-menu.open {
+            display: block;
+        }
+        .status-option {
+            display: flex;
+            align-items: center;
+            padding: 8px 14px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: background-color 0.15s;
+        }
+        .status-option:hover {
+            background-color: #f3f4f6;
+        }
+        .status-option .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        .status-option.active {
+            background-color: #f0f9ff;
+        }
+    </style>
 </head>
 <body class="bg-gray-50">
     <!-- Header -->
@@ -181,6 +236,19 @@
         let deleteLeadId = null;
 
         // ── Utility functions (defined first so they're available everywhere) ──
+        const statusConfig = {
+            'new':       { label: 'New',       bg: '#DBEAFE', text: '#1E40AF', dot: '#3B82F6' },
+            'contacted': { label: 'Contacted', bg: '#FEF3C7', text: '#92400E', dot: '#F59E0B' },
+            'qualified': { label: 'Qualified', bg: '#D1FAE5', text: '#065F46', dot: '#10B981' },
+            'converted': { label: 'Converted', bg: '#A7F3D0', text: '#064E3B', dot: '#059669' },
+            'lost':      { label: 'Lost',      bg: '#FEE2E2', text: '#991B1B', dot: '#EF4444' }
+        };
+
+        function getStatusStyle(status) {
+            const config = statusConfig[status] || { bg: '#F3F4F6', text: '#374151', dot: '#9CA3AF' };
+            return `background-color:${config.bg};color:${config.text};`;
+        }
+
         function getStatusClass(status) {
             const classes = {
                 'new': 'bg-blue-100 text-blue-800',
@@ -296,14 +364,25 @@
                         ${lead.buyer_phone ? `<div class="text-gray-500">${escapeHtml(lead.buyer_phone)}</div>` : ''}
                     </td>
                     <td class="px-6 py-4">
-                        <select onchange="updateLeadStatus('${lead.id}', this.value)"
-                                class="px-3 py-1 rounded-full text-sm font-medium border-0 ${getStatusClass(lead.status)}">
-                            <option value="new" ${lead.status === 'new' ? 'selected' : ''}>New</option>
-                            <option value="contacted" ${lead.status === 'contacted' ? 'selected' : ''}>Contacted</option>
-                            <option value="qualified" ${lead.status === 'qualified' ? 'selected' : ''}>Qualified</option>
-                            <option value="converted" ${lead.status === 'converted' ? 'selected' : ''}>Converted</option>
-                            <option value="lost" ${lead.status === 'lost' ? 'selected' : ''}>Lost</option>
-                        </select>
+                        <div class="status-dropdown" id="status-dd-${lead.id}">
+                            <span class="status-badge px-3 py-1 rounded-full text-sm font-semibold inline-flex items-center"
+                                  style="${getStatusStyle(lead.status)}"
+                                  onclick="toggleStatusMenu('${lead.id}')">
+                                <span class="w-2 h-2 rounded-full mr-2" style="background-color:${(statusConfig[lead.status] || statusConfig['new']).dot}"></span>
+                                ${(statusConfig[lead.status] || { label: lead.status }).label}
+                                <svg class="w-3 h-3 ml-1.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </span>
+                            <div class="status-menu" id="status-menu-${lead.id}">
+                                ${Object.entries(statusConfig).map(([key, cfg]) => `
+                                    <div class="status-option ${lead.status === key ? 'active' : ''}"
+                                         onclick="selectStatus('${lead.id}', '${key}', this)">
+                                        <span class="status-dot" style="background-color:${cfg.dot}"></span>
+                                        <span>${cfg.label}</span>
+                                        ${lead.status === key ? '<svg class="w-4 h-4 ml-auto text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>' : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
                     </td>
                     <td class="px-6 py-4 text-sm text-gray-900">${lead.score || 0}</td>
                     <td class="px-6 py-4 text-sm text-gray-500">${escapeHtml(lead.source || 'manual')}</td>
@@ -374,6 +453,55 @@
             }
         });
 
+        // ── Status dropdown functions ──
+        function toggleStatusMenu(leadId) {
+            // Close all other open menus first
+            document.querySelectorAll('.status-menu.open').forEach(menu => {
+                menu.classList.remove('open');
+            });
+            const menu = document.getElementById('status-menu-' + leadId);
+            if (menu) menu.classList.toggle('open');
+        }
+
+        function selectStatus(leadId, newStatus, optionEl) {
+            // Close the menu immediately
+            const menu = document.getElementById('status-menu-' + leadId);
+            if (menu) menu.classList.remove('open');
+
+            // Update the badge color immediately for instant feedback
+            const dropdown = document.getElementById('status-dd-' + leadId);
+            if (dropdown) {
+                const badge = dropdown.querySelector('.status-badge');
+                const cfg = statusConfig[newStatus] || statusConfig['new'];
+                if (badge) {
+                    badge.style.backgroundColor = cfg.bg;
+                    badge.style.color = cfg.text;
+                    const dot = badge.querySelector('.w-2');
+                    if (dot) dot.style.backgroundColor = cfg.dot;
+                    const textNode = badge.childNodes;
+                    // Update text: find the text node between dot and chevron
+                    for (let node of textNode) {
+                        if (node.nodeType === 3 && node.textContent.trim()) {
+                            node.textContent = '\n                                ' + cfg.label + '\n                                ';
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Update in database
+            updateLeadStatus(leadId, newStatus);
+        }
+
+        // Close status menus when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.status-dropdown')) {
+                document.querySelectorAll('.status-menu.open').forEach(menu => {
+                    menu.classList.remove('open');
+                });
+            }
+        });
+
         // ── Update lead status ──
         async function updateLeadStatus(leadId, newStatus) {
             if (!supabaseClient) {
@@ -381,18 +509,27 @@
                 return;
             }
             try {
-                const { error } = await supabaseClient
+                const { data, error } = await supabaseClient
                     .from('leads')
-                    .update({ status: newStatus, updated_at: new Date().toISOString() })
-                    .eq('id', leadId);
+                    .update({ status: newStatus })
+                    .eq('id', leadId)
+                    .select();
 
                 if (error) throw error;
 
-                showToast('Status updated');
+                if (!data || data.length === 0) {
+                    showToast('Lead not found. It may have been deleted.');
+                    loadLeads();
+                    return;
+                }
+
+                const cfg = statusConfig[newStatus] || statusConfig['new'];
+                showToast('Status updated to ' + cfg.label);
                 loadLeads();
             } catch (error) {
                 console.error('Error updating status:', error);
                 showToast('Failed to update status: ' + (error.message || 'Unknown error'));
+                loadLeads(); // Reload to revert visual change on failure
             }
         }
 
