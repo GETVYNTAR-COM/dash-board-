@@ -335,8 +335,7 @@
                 if (error) throw error;
 
                 allLeads = data || [];
-                renderLeads(allLeads);
-                updateStats(allLeads);
+                applyCurrentView();
             } catch (error) {
                 console.error('Error loading leads:', error);
                 showToast('Failed to load leads: ' + (error.message || 'Unknown error'));
@@ -502,6 +501,23 @@
             }
         });
 
+        // ── Re-render leads respecting current search filter ──
+        function applyCurrentView() {
+            const searchTerm = (document.getElementById('searchInput').value || '').toLowerCase();
+            if (searchTerm) {
+                const filtered = allLeads.filter(lead =>
+                    lead.buyer_name?.toLowerCase().includes(searchTerm) ||
+                    lead.buyer_email?.toLowerCase().includes(searchTerm) ||
+                    lead.buyer_phone?.toLowerCase().includes(searchTerm) ||
+                    lead.message?.toLowerCase().includes(searchTerm)
+                );
+                renderLeads(filtered);
+            } else {
+                renderLeads(allLeads);
+            }
+            updateStats(allLeads);
+        }
+
         // ── Update lead status ──
         async function updateLeadStatus(leadId, newStatus) {
             if (!supabaseClient) {
@@ -516,9 +532,35 @@
 
                 if (error) throw error;
 
+                // Verify the update actually persisted by reading the row back
+                const { data: verifyData, error: verifyError } = await supabaseClient
+                    .from('leads')
+                    .select('id, status')
+                    .eq('id', leadId)
+                    .maybeSingle();
+
+                if (verifyError) {
+                    console.error('Error verifying status update:', verifyError);
+                }
+
+                if (verifyData && verifyData.status !== newStatus) {
+                    // Update was silently rejected (e.g. by RLS policy)
+                    showToast('Status update failed — please try again or refresh the page');
+                    loadLeads();
+                    return;
+                }
+
+                // Update local allLeads array so the UI stays in sync
+                const index = allLeads.findIndex(l => String(l.id) === String(leadId));
+                if (index !== -1) {
+                    allLeads[index].status = newStatus;
+                }
+
                 const cfg = statusConfig[newStatus] || statusConfig['new'];
                 showToast('Status updated to ' + cfg.label);
-                loadLeads();
+
+                // Re-render immediately from updated local state
+                applyCurrentView();
             } catch (error) {
                 console.error('Error updating status:', error);
                 showToast('Failed to update status: ' + (error.message || 'Unknown error'));
