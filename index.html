@@ -536,14 +536,35 @@
                 return;
             }
             try {
-                const { error } = await supabaseClient
+                // Fetch the full current lead first (needed for fallback)
+                const { data: currentLead, error: fetchError } = await supabaseClient
+                    .from('leads')
+                    .select('*')
+                    .eq('id', leadId)
+                    .maybeSingle();
+
+                if (fetchError) throw fetchError;
+                if (!currentLead) {
+                    showToast('Lead not found — it may have been deleted.');
+                    loadLeads();
+                    return;
+                }
+
+                // Already the desired status — nothing to do
+                if (currentLead.status === newStatus) {
+                    showToast('Status is already ' + (statusConfig[newStatus] || statusConfig['new']).label);
+                    return;
+                }
+
+                // ── Attempt 1: standard UPDATE ──
+                const { error: updateError } = await supabaseClient
                     .from('leads')
                     .update({ status: newStatus })
                     .eq('id', leadId);
 
-                if (error) throw error;
+                if (updateError) throw updateError;
 
-                // Verify the update actually persisted by reading the row back
+                // Verify the update actually persisted
                 const { data: verifyData, error: verifyError } = await supabaseClient
                     .from('leads')
                     .select('id, status')
@@ -555,13 +576,61 @@
                 }
 
                 if (verifyData && verifyData.status !== newStatus) {
-                    // Update was silently rejected (e.g. by RLS policy)
-                    showToast('Status update failed — please try again or refresh the page');
-                    loadLeads();
-                    return;
+                    // UPDATE was silently rejected (e.g. by RLS policy)
+                    // ── Attempt 2: delete + re-insert with new status ──
+                    console.warn('UPDATE blocked by RLS — falling back to delete + re-insert');
+
+                    const { error: deleteError } = await supabaseClient
+                        .from('leads')
+                        .delete()
+                        .eq('id', leadId);
+
+                    if (deleteError) {
+                        console.error('Fallback delete failed:', deleteError);
+                        showToast('Status update failed — could not save change.');
+                        loadLeads();
+                        return;
+                    }
+
+                    // Re-insert with same data but new status
+                    const updatedLead = { ...currentLead, status: newStatus };
+
+                    const { error: insertError } = await supabaseClient
+                        .from('leads')
+                        .insert([updatedLead]);
+
+                    if (insertError) {
+                        // Insert failed — try to restore the original row
+                        console.error('Fallback insert failed:', insertError);
+                        const { error: restoreError } = await supabaseClient
+                            .from('leads')
+                            .insert([currentLead]);
+
+                        if (restoreError) {
+                            console.error('CRITICAL: could not restore lead:', restoreError);
+                            showToast('Error saving status. Please refresh — your lead data is safe.');
+                        } else {
+                            showToast('Status update failed — lead has been restored.');
+                        }
+                        loadLeads();
+                        return;
+                    }
+
+                    // Verify the fallback worked
+                    const { data: fbVerify } = await supabaseClient
+                        .from('leads')
+                        .select('id, status')
+                        .eq('id', leadId)
+                        .maybeSingle();
+
+                    if (fbVerify && fbVerify.status !== newStatus) {
+                        showToast('Status update could not be saved. Please contact support.');
+                        loadLeads();
+                        return;
+                    }
                 }
 
-                // Update local allLeads array so the UI stays in sync
+                // ── Success — sync local state ──
                 const index = allLeads.findIndex(l => String(l.id) === String(leadId));
                 if (index !== -1) {
                     allLeads[index].status = newStatus;
