@@ -177,11 +177,19 @@
         let deleteLeadId = null;
 
         // Toggle Add Lead Form
-        document.getElementById('toggleFormBtn').addEventListener('click', () => {
+        document.getElementById('toggleFormBtn').addEventListener('click', (e) => {
+            e.preventDefault();
             const form = document.getElementById('addLeadForm');
             const icon = document.getElementById('toggleIcon');
-            form.classList.toggle('hidden');
-            icon.style.transform = form.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(45deg)';
+            const isHidden = form.classList.contains('hidden');
+            
+            if (isHidden) {
+                form.classList.remove('hidden');
+                icon.style.transform = 'rotate(45deg)';
+            } else {
+                form.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
         });
 
         // Load leads
