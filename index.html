@@ -60,6 +60,13 @@
         .status-option.active {
             background-color: #f0f9ff;
         }
+        @keyframes pulse-row {
+            0%, 100% { background-color: transparent; }
+            50% { background-color: #eff6ff; }
+        }
+        .row-updating {
+            animation: pulse-row 1s ease-in-out infinite;
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -88,7 +95,7 @@
 
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
+
         <!-- Stats Cards -->
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -121,23 +128,23 @@
                 </svg>
                 Add Lead
             </button>
-            
+
             <form id="addLeadForm" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 hidden">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Buyer Name *</label>
-                    <input type="text" id="buyerName" required 
+                    <input type="text" id="buyerName" required
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                            placeholder="John Smith">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input type="email" id="buyerEmail" 
+                    <input type="email" id="buyerEmail"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                            placeholder="john@example.com">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input type="tel" id="buyerPhone" 
+                    <input type="tel" id="buyerPhone"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                            placeholder="07123 456789">
                 </div>
@@ -153,7 +160,7 @@
                               placeholder="Lead inquiry or notes..."></textarea>
                 </div>
                 <div class="md:col-span-2">
-                    <button type="submit" 
+                    <button type="submit"
                             class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold">
                         Add Lead
                     </button>
@@ -167,16 +174,16 @@
                 <div class="flex items-center justify-between">
                     <h2 class="text-xl font-bold text-gray-900">Leads (<span id="leadsCount">0</span>)</h2>
                     <div class="flex items-center space-x-4">
-                        <input type="text" id="searchInput" placeholder="Search leads..." 
+                        <input type="text" id="searchInput" placeholder="Search leads..."
                                class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64">
-                        <button onclick="loadLeads()" 
+                        <button id="refreshBtn"
                                 class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
-                            🔄 Refresh
+                            Refresh
                         </button>
                     </div>
                 </div>
             </div>
-            
+
             <div class="overflow-x-auto">
                 <table class="w-full">
                     <thead class="bg-gray-50 border-b border-gray-200">
@@ -191,7 +198,7 @@
                         </tr>
                     </thead>
                     <tbody id="leadsTableBody" class="bg-white divide-y divide-gray-200">
-                        <!-- Leads will be inserted here -->
+                        <tr><td colspan="7" class="px-6 py-8 text-center text-gray-400">Loading leads...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -204,11 +211,11 @@
             <h3 class="text-lg font-bold text-gray-900 mb-2">Delete Lead?</h3>
             <p class="text-gray-600 mb-6">Delete <span id="deleteBuyerName" class="font-semibold"></span>? This action cannot be undone.</p>
             <div class="flex space-x-4">
-                <button onclick="closeDeleteModal()" 
+                <button id="cancelDeleteBtn"
                         class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">
                     Cancel
                 </button>
-                <button onclick="confirmDeleteLead()" 
+                <button id="confirmDeleteBtn"
                         class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
                     Delete
                 </button>
@@ -230,12 +237,22 @@
     </div>
 
     <script>
+        // ── Constants ──
+        const PAGE_SIZE = 50;
+        const SEARCH_DEBOUNCE_MS = 300;
+        const REALTIME_DEBOUNCE_MS = 1000;
+        const LEAD_COLUMNS = 'id,buyer_name,buyer_email,buyer_phone,status,score,source,message,thread_id,created_at';
+
         // ── Variables ──
         let supabaseClient = null;
         let allLeads = [];
         let deleteLeadId = null;
+        let displayedCount = PAGE_SIZE;
+        let searchDebounceTimer = null;
+        let realtimeDebounceTimer = null;
+        let statusUpdateInProgress = false;
 
-        // ── Utility functions (defined first so they're available everywhere) ──
+        // ── Utility functions ──
         const statusConfig = {
             'new':       { label: 'New',       bg: '#DBEAFE', text: '#1E40AF', dot: '#3B82F6' },
             'contacted': { label: 'Contacted', bg: '#FEF3C7', text: '#92400E', dot: '#F59E0B' },
@@ -247,17 +264,6 @@
         function getStatusStyle(status) {
             const config = statusConfig[status] || { bg: '#F3F4F6', text: '#374151', dot: '#9CA3AF' };
             return `background-color:${config.bg};color:${config.text};`;
-        }
-
-        function getStatusClass(status) {
-            const classes = {
-                'new': 'bg-blue-100 text-blue-800',
-                'contacted': 'bg-yellow-100 text-yellow-800',
-                'qualified': 'bg-green-100 text-green-800',
-                'converted': 'bg-emerald-100 text-emerald-800',
-                'lost': 'bg-red-100 text-red-800'
-            };
-            return classes[status] || 'bg-gray-100 text-gray-800';
         }
 
         function formatDate(dateString) {
@@ -282,15 +288,14 @@
             return div.innerHTML;
         }
 
-        // Escape a value for safe use inside inline JS string literals (single-quoted)
-        function escapeJsString(str) {
-            if (str === null || str === undefined) return '';
-            return String(str)
-                .replace(/\\/g, '\\\\')
-                .replace(/'/g, "\\'")
+        function escapeAttr(text) {
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
                 .replace(/"/g, '&quot;')
-                .replace(/</g, '\\x3c')
-                .replace(/>/g, '\\x3e');
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
         }
 
         function showToast(message) {
@@ -301,7 +306,7 @@
             setTimeout(() => toast.classList.add('hidden'), 3000);
         }
 
-        // ── Initialize Supabase (with error handling) ──
+        // ── Initialize Supabase ──
         try {
             if (window.supabase && typeof window.supabase.createClient === 'function') {
                 supabaseClient = window.supabase.createClient(
@@ -340,12 +345,13 @@
             try {
                 const { data, error } = await supabaseClient
                     .from('leads')
-                    .select('*')
+                    .select(LEAD_COLUMNS)
                     .order('created_at', { ascending: false });
 
                 if (error) throw error;
 
                 allLeads = data || [];
+                displayedCount = PAGE_SIZE;
                 applyCurrentView();
             } catch (error) {
                 console.error('Error loading leads:', error);
@@ -353,7 +359,7 @@
             }
         }
 
-        // ── Render leads table ──
+        // ── Render leads table (paginated) ──
         function renderLeads(leads) {
             const tbody = document.getElementById('leadsTableBody');
             document.getElementById('leadsCount').textContent = leads.length;
@@ -363,8 +369,14 @@
                 return;
             }
 
-            tbody.innerHTML = leads.map(lead => `
-                <tr class="hover:bg-gray-50">
+            const visible = leads.slice(0, displayedCount);
+            const remaining = leads.length - visible.length;
+
+            let html = visible.map(lead => {
+                const cfg = statusConfig[lead.status] || statusConfig['new'];
+                const safeId = escapeAttr(lead.id);
+                return `
+                <tr class="hover:bg-gray-50" id="row-${safeId}">
                     <td class="px-6 py-4">
                         <div class="font-medium text-gray-900">${escapeHtml(lead.buyer_name)}</div>
                         ${lead.message ? `<div class="text-sm text-gray-500">${escapeHtml(lead.message).substring(0, 50)}...</div>` : ''}
@@ -374,20 +386,20 @@
                         ${lead.buyer_phone ? `<div class="text-gray-500">${escapeHtml(lead.buyer_phone)}</div>` : ''}
                     </td>
                     <td class="px-6 py-4">
-                        <div class="status-dropdown" id="status-dd-${lead.id}">
+                        <div class="status-dropdown" id="status-dd-${safeId}">
                             <span class="status-badge px-3 py-1 rounded-full text-sm font-semibold inline-flex items-center"
                                   style="${getStatusStyle(lead.status)}"
-                                  onclick="toggleStatusMenu('${escapeJsString(lead.id)}')">
-                                <span class="w-2 h-2 rounded-full mr-2" style="background-color:${(statusConfig[lead.status] || statusConfig['new']).dot}"></span>
-                                ${(statusConfig[lead.status] || { label: lead.status }).label}
+                                  data-toggle-status="${safeId}">
+                                <span class="w-2 h-2 rounded-full mr-2" style="background-color:${cfg.dot}"></span>
+                                ${cfg.label}
                                 <svg class="w-3 h-3 ml-1.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                             </span>
-                            <div class="status-menu" id="status-menu-${lead.id}">
-                                ${Object.entries(statusConfig).map(([key, cfg]) => `
+                            <div class="status-menu" id="status-menu-${safeId}">
+                                ${Object.entries(statusConfig).map(([key, sCfg]) => `
                                     <div class="status-option ${lead.status === key ? 'active' : ''}"
-                                         onclick="selectStatus('${escapeJsString(lead.id)}', '${key}', this)">
-                                        <span class="status-dot" style="background-color:${cfg.dot}"></span>
-                                        <span>${cfg.label}</span>
+                                         data-lead-id="${safeId}" data-select-status="${key}">
+                                        <span class="status-dot" style="background-color:${sCfg.dot}"></span>
+                                        <span>${sCfg.label}</span>
                                         ${lead.status === key ? '<svg class="w-4 h-4 ml-auto text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>' : ''}
                                     </div>
                                 `).join('')}
@@ -398,24 +410,48 @@
                     <td class="px-6 py-4 text-sm text-gray-500">${escapeHtml(lead.source || 'manual')}</td>
                     <td class="px-6 py-4 text-sm text-gray-500">${formatDate(lead.created_at)}</td>
                     <td class="px-6 py-4">
-                        <button onclick="openDeleteModal('${escapeJsString(lead.id)}', '${escapeJsString(lead.buyer_name)}')"
+                        <button data-delete-lead="${safeId}"
                                 class="text-gray-400 hover:text-red-600 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                             </svg>
                         </button>
                     </td>
-                </tr>
-            `).join('');
+                </tr>`;
+            }).join('');
+
+            if (remaining > 0) {
+                html += `<tr><td colspan="7" class="px-6 py-4 text-center">
+                    <button data-action="load-more"
+                            class="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium">
+                        Show More (${remaining} remaining)
+                    </button>
+                </td></tr>`;
+            }
+
+            tbody.innerHTML = html;
         }
 
-        // ── Update stats ──
+        // ── Update stats (only touches DOM when values change) ──
+        let prevStats = {};
         function updateStats(leads) {
-            document.getElementById('totalLeads').textContent = leads.length;
-            document.getElementById('newLeads').textContent = leads.filter(l => l.status === 'new').length;
-            document.getElementById('contactedLeads').textContent = leads.filter(l => l.status === 'contacted').length;
-            document.getElementById('qualifiedLeads').textContent = leads.filter(l => l.status === 'qualified').length;
-            document.getElementById('convertedLeads').textContent = leads.filter(l => l.status === 'converted').length;
+            const stats = {
+                totalLeads: leads.length,
+                newLeads: 0, contactedLeads: 0, qualifiedLeads: 0, convertedLeads: 0
+            };
+            for (let i = 0; i < leads.length; i++) {
+                const s = leads[i].status;
+                if (s === 'new') stats.newLeads++;
+                else if (s === 'contacted') stats.contactedLeads++;
+                else if (s === 'qualified') stats.qualifiedLeads++;
+                else if (s === 'converted') stats.convertedLeads++;
+            }
+            for (const [id, val] of Object.entries(stats)) {
+                if (prevStats[id] !== val) {
+                    document.getElementById(id).textContent = val;
+                }
+            }
+            prevStats = stats;
         }
 
         // ── Add lead (form submission) ──
@@ -465,20 +501,20 @@
 
         // ── Status dropdown functions ──
         function toggleStatusMenu(leadId) {
-            // Close all other open menus first
             document.querySelectorAll('.status-menu.open').forEach(menu => {
-                menu.classList.remove('open');
+                if (menu.id !== 'status-menu-' + leadId) {
+                    menu.classList.remove('open');
+                }
             });
             const menu = document.getElementById('status-menu-' + leadId);
             if (menu) menu.classList.toggle('open');
         }
 
-        function selectStatus(leadId, newStatus, optionEl) {
-            // Close the menu immediately
+        function selectStatus(leadId, newStatus) {
             const menu = document.getElementById('status-menu-' + leadId);
             if (menu) menu.classList.remove('open');
 
-            // Update the badge color immediately for instant feedback
+            // Instant visual feedback on the badge
             const dropdown = document.getElementById('status-dd-' + leadId);
             if (dropdown) {
                 const badge = dropdown.querySelector('.status-badge');
@@ -488,18 +524,20 @@
                     badge.style.color = cfg.text;
                     const dot = badge.querySelector('.w-2');
                     if (dot) dot.style.backgroundColor = cfg.dot;
-                    const textNode = badge.childNodes;
-                    // Update text: find the text node between dot and chevron
-                    for (let node of textNode) {
+                    // Update label text
+                    for (let node of badge.childNodes) {
                         if (node.nodeType === 3 && node.textContent.trim()) {
-                            node.textContent = '\n                                ' + cfg.label + '\n                                ';
+                            node.textContent = ' ' + cfg.label + ' ';
                             break;
                         }
                     }
                 }
             }
 
-            // Update in database
+            // Show updating indicator on the row
+            const row = document.getElementById('row-' + leadId);
+            if (row) row.classList.add('row-updating');
+
             updateLeadStatus(leadId, newStatus);
         }
 
@@ -509,6 +547,42 @@
                 document.querySelectorAll('.status-menu.open').forEach(menu => {
                     menu.classList.remove('open');
                 });
+            }
+        });
+
+        // ── Event delegation for table actions ──
+        document.getElementById('leadsTableBody').addEventListener('click', (e) => {
+            // Status badge toggle
+            const badge = e.target.closest('[data-toggle-status]');
+            if (badge) {
+                e.stopPropagation();
+                toggleStatusMenu(badge.dataset.toggleStatus);
+                return;
+            }
+
+            // Status option select
+            const option = e.target.closest('[data-select-status]');
+            if (option) {
+                e.stopPropagation();
+                selectStatus(option.dataset.leadId, option.dataset.selectStatus);
+                return;
+            }
+
+            // Delete button
+            const deleteBtn = e.target.closest('[data-delete-lead]');
+            if (deleteBtn) {
+                const leadId = deleteBtn.dataset.deleteLead;
+                const lead = allLeads.find(l => String(l.id) === String(leadId));
+                if (lead) openDeleteModal(leadId, lead.buyer_name);
+                return;
+            }
+
+            // Load more button
+            const loadMoreBtn = e.target.closest('[data-action="load-more"]');
+            if (loadMoreBtn) {
+                displayedCount += PAGE_SIZE;
+                applyCurrentView();
+                return;
             }
         });
 
@@ -529,17 +603,60 @@
             updateStats(allLeads);
         }
 
-        // ── Update lead status ──
+        // ── Helper: extract only insertable columns from a lead ──
+        function pickLeadFields(lead, overrides) {
+            const picked = {
+                buyer_name: lead.buyer_name,
+                buyer_email: lead.buyer_email,
+                buyer_phone: lead.buyer_phone,
+                message: lead.message,
+                score: lead.score,
+                status: lead.status,
+                source: lead.source,
+                thread_id: lead.thread_id,
+                created_at: lead.created_at
+            };
+            if (overrides) Object.assign(picked, overrides);
+            return picked;
+        }
+
+        // ── Update lead status (with robust RLS fallback) ──
         async function updateLeadStatus(leadId, newStatus) {
             if (!supabaseClient) {
                 showToast('Database not connected. Please refresh the page.');
                 return;
             }
+            if (statusUpdateInProgress) {
+                showToast('Please wait — another update is in progress.');
+                return;
+            }
+            statusUpdateInProgress = true;
+
             try {
-                // Fetch the full current lead first (needed for fallback)
+                // ── Attempt 1: Direct UPDATE with .select() to verify in one query ──
+                const { data: updated, error: updateError } = await supabaseClient
+                    .from('leads')
+                    .update({ status: newStatus })
+                    .eq('id', leadId)
+                    .select('id, status')
+                    .maybeSingle();
+
+                if (!updateError && updated && updated.status === newStatus) {
+                    // UPDATE worked — sync local state
+                    const idx = allLeads.findIndex(l => String(l.id) === String(leadId));
+                    if (idx !== -1) allLeads[idx].status = newStatus;
+                    showToast('Status updated to ' + (statusConfig[newStatus] || { label: newStatus }).label);
+                    applyCurrentView();
+                    return;
+                }
+
+                // UPDATE was silently blocked by RLS or returned no rows
+                console.warn('Direct UPDATE did not persist (likely RLS). Falling back to DELETE + INSERT.');
+
+                // ── Fetch current lead for re-insertion ──
                 const { data: currentLead, error: fetchError } = await supabaseClient
                     .from('leads')
-                    .select('*')
+                    .select(LEAD_COLUMNS)
                     .eq('id', leadId)
                     .maybeSingle();
 
@@ -550,101 +667,66 @@
                     return;
                 }
 
-                // Already the desired status — nothing to do
                 if (currentLead.status === newStatus) {
-                    showToast('Status is already ' + (statusConfig[newStatus] || statusConfig['new']).label);
+                    showToast('Status is already ' + (statusConfig[newStatus] || { label: newStatus }).label);
                     return;
                 }
 
-                // ── Attempt 1: standard UPDATE ──
-                const { error: updateError } = await supabaseClient
+                // ── Attempt 2: DELETE then INSERT ──
+                const { error: deleteError } = await supabaseClient
                     .from('leads')
-                    .update({ status: newStatus })
+                    .delete()
                     .eq('id', leadId);
 
-                if (updateError) throw updateError;
+                if (deleteError) {
+                    console.error('Fallback DELETE failed:', deleteError);
+                    showToast('Status update failed — could not save change.');
+                    loadLeads();
+                    return;
+                }
 
-                // Verify the update actually persisted
-                const { data: verifyData, error: verifyError } = await supabaseClient
+                // Insert with new status using only known columns + same ID
+                const insertData = pickLeadFields(currentLead, { status: newStatus });
+                insertData.id = currentLead.id;
+
+                const { error: insertError } = await supabaseClient
                     .from('leads')
-                    .select('id, status')
-                    .eq('id', leadId)
-                    .maybeSingle();
+                    .insert([insertData]);
 
-                if (verifyError) {
-                    console.error('Error verifying status update:', verifyError);
-                }
+                if (insertError) {
+                    console.warn('INSERT with original ID failed:', insertError.message, '— retrying without ID');
 
-                if (verifyData && verifyData.status !== newStatus) {
-                    // UPDATE was silently rejected (e.g. by RLS policy)
-                    // ── Attempt 2: delete + re-insert with new status ──
-                    console.warn('UPDATE blocked by RLS — falling back to delete + re-insert');
-
-                    const { error: deleteError } = await supabaseClient
+                    // Try without the ID (let DB auto-generate)
+                    delete insertData.id;
+                    const { error: insertError2 } = await supabaseClient
                         .from('leads')
-                        .delete()
-                        .eq('id', leadId);
+                        .insert([insertData]);
 
-                    if (deleteError) {
-                        console.error('Fallback delete failed:', deleteError);
-                        showToast('Status update failed — could not save change.');
-                        loadLeads();
-                        return;
-                    }
-
-                    // Re-insert with same data but new status
-                    const updatedLead = { ...currentLead, status: newStatus };
-
-                    const { error: insertError } = await supabaseClient
-                        .from('leads')
-                        .insert([updatedLead]);
-
-                    if (insertError) {
-                        // Insert failed — try to restore the original row
-                        console.error('Fallback insert failed:', insertError);
-                        const { error: restoreError } = await supabaseClient
-                            .from('leads')
-                            .insert([currentLead]);
-
-                        if (restoreError) {
-                            console.error('CRITICAL: could not restore lead:', restoreError);
-                            showToast('Error saving status. Please refresh — your lead data is safe.');
-                        } else {
-                            showToast('Status update failed — lead has been restored.');
-                        }
-                        loadLeads();
-                        return;
-                    }
-
-                    // Verify the fallback worked
-                    const { data: fbVerify } = await supabaseClient
-                        .from('leads')
-                        .select('id, status')
-                        .eq('id', leadId)
-                        .maybeSingle();
-
-                    if (fbVerify && fbVerify.status !== newStatus) {
-                        showToast('Status update could not be saved. Please contact support.');
+                    if (insertError2) {
+                        console.error('INSERT without ID also failed:', insertError2);
+                        // Last resort: try to restore the original lead
+                        const restoreData = pickLeadFields(currentLead);
+                        restoreData.id = currentLead.id;
+                        await supabaseClient.from('leads').insert([restoreData]).catch(() => {});
+                        showToast('Status update failed. Please refresh the page.');
                         loadLeads();
                         return;
                     }
                 }
 
-                // ── Success — sync local state ──
-                const index = allLeads.findIndex(l => String(l.id) === String(leadId));
-                if (index !== -1) {
-                    allLeads[index].status = newStatus;
-                }
+                showToast('Status updated to ' + (statusConfig[newStatus] || { label: newStatus }).label);
+                // Reload to get fresh data after delete+insert (ID may have changed)
+                loadLeads();
 
-                const cfg = statusConfig[newStatus] || statusConfig['new'];
-                showToast('Status updated to ' + cfg.label);
-
-                // Re-render immediately from updated local state
-                applyCurrentView();
             } catch (error) {
                 console.error('Error updating status:', error);
                 showToast('Failed to update status: ' + (error.message || 'Unknown error'));
-                loadLeads(); // Reload to revert visual change on failure
+                loadLeads();
+            } finally {
+                statusUpdateInProgress = false;
+                // Remove row updating indicator
+                const row = document.getElementById('row-' + leadId);
+                if (row) row.classList.remove('row-updating');
             }
         }
 
@@ -684,23 +766,27 @@
             }
         }
 
-        // ── Search functionality ──
+        document.getElementById('cancelDeleteBtn').addEventListener('click', closeDeleteModal);
+        document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDeleteLead);
+
+        // ── Search functionality (debounced) ──
         document.getElementById('searchInput').addEventListener('input', (e) => {
-            const searchTerm = e.target.value.toLowerCase();
-            const filtered = allLeads.filter(lead =>
-                lead.buyer_name?.toLowerCase().includes(searchTerm) ||
-                lead.buyer_email?.toLowerCase().includes(searchTerm) ||
-                lead.buyer_phone?.toLowerCase().includes(searchTerm) ||
-                lead.message?.toLowerCase().includes(searchTerm)
-            );
-            renderLeads(filtered);
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => {
+                displayedCount = PAGE_SIZE;
+                applyCurrentView();
+            }, SEARCH_DEBOUNCE_MS);
         });
 
-        // ── Real-time subscription (debounced to avoid UI flooding) ──
-        let realtimeDebounceTimer = null;
+        // ── Refresh button ──
+        document.getElementById('refreshBtn').addEventListener('click', () => loadLeads());
+
+        // ── Real-time subscription (debounced to avoid flooding) ──
         function debouncedLoadLeads() {
             clearTimeout(realtimeDebounceTimer);
-            realtimeDebounceTimer = setTimeout(() => loadLeads(), 300);
+            realtimeDebounceTimer = setTimeout(() => {
+                if (!statusUpdateInProgress) loadLeads();
+            }, REALTIME_DEBOUNCE_MS);
         }
 
         if (supabaseClient) {
