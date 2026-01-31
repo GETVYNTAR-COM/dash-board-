@@ -282,15 +282,15 @@ describe('JavaScript - CRUD Operations', () => {
   });
 
   it('should have RLS fallback mechanism for status updates', () => {
-    assert.ok(jsCode.includes('delete + re-insert'), 'Should mention delete + re-insert fallback');
+    assert.ok(jsCode.includes('DELETE then INSERT'), 'Should mention DELETE then INSERT fallback');
     assert.ok(jsCode.includes('.delete()'), 'Should have delete operation for fallback');
-    // Check for the restoration logic if insert fails
-    assert.ok(jsCode.includes('could not restore lead'), 'Should have restore logic if fallback fails');
+    // Check that DELETE is verified before INSERT to prevent duplicates
+    assert.ok(jsCode.includes('stillExists'), 'Should verify DELETE actually removed the row');
   });
 
   it('should verify status update actually persisted', () => {
-    assert.ok(jsCode.includes('verifyData'), 'Should verify update with a re-read');
-    assert.ok(jsCode.includes('verifyData.status !== newStatus'), 'Should check if status actually changed');
+    assert.ok(jsCode.includes('stillExists'), 'Should verify delete with a re-read');
+    assert.ok(jsCode.includes('silently blocked'), 'Should detect silently blocked operations');
   });
 
   it('should have confirmDeleteLead function', () => {
@@ -523,9 +523,9 @@ describe('Status Dropdown', () => {
     assert.ok(jsCode.includes('function selectStatus(leadId, newStatus, optionEl)'), 'Missing selectStatus');
   });
 
-  it('should skip update if status is already the same', () => {
+  it('should handle case where update already succeeded', () => {
     assert.ok(jsCode.includes('currentLead.status === newStatus'), 'Should check if status already matches');
-    assert.ok(jsCode.includes("'Status is already '"), 'Should inform user status is already set');
+    assert.ok(jsCode.includes("'Status updated to '"), 'Should confirm status update to user');
   });
 
   it('should render all 5 status options in dropdown', () => {
