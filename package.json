@@ -1,0 +1,9 @@
+{
+  "name": "vyntar-dashboard-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test suite for VYNTAR Marketplace Dashboard",
+  "scripts": {
+    "test": "node --test tests/dashboard.test.js"
+  }
+}
