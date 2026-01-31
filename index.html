@@ -668,7 +668,11 @@
                 }
 
                 if (currentLead.status === newStatus) {
-                    showToast('Status is already ' + (statusConfig[newStatus] || { label: newStatus }).label);
+                    // UPDATE actually worked but .select() didn't return data
+                    const idx = allLeads.findIndex(l => String(l.id) === String(leadId));
+                    if (idx !== -1) allLeads[idx].status = newStatus;
+                    showToast('Status updated to ' + (statusConfig[newStatus] || { label: newStatus }).label);
+                    applyCurrentView();
                     return;
                 }
 
@@ -685,7 +689,22 @@
                     return;
                 }
 
-                // Insert with new status using only known columns + same ID
+                // Verify the DELETE actually removed the row (RLS may silently block it)
+                const { data: stillExists } = await supabaseClient
+                    .from('leads')
+                    .select('id')
+                    .eq('id', leadId)
+                    .maybeSingle();
+
+                if (stillExists) {
+                    // DELETE was silently blocked — do NOT insert (would create duplicate)
+                    console.error('DELETE was silently blocked by RLS — aborting to prevent duplicate.');
+                    showToast('Status update failed — database permissions need updating. Please check Supabase RLS policies to allow UPDATE or DELETE on leads.');
+                    loadLeads();
+                    return;
+                }
+
+                // Row was actually deleted — safe to insert replacement
                 const insertData = pickLeadFields(currentLead, { status: newStatus });
                 insertData.id = currentLead.id;
 
@@ -756,6 +775,26 @@
                     .eq('id', deleteLeadId);
 
                 if (error) throw error;
+
+                // Verify the row was actually deleted (RLS may silently block deletes)
+                const { data: stillExists } = await supabaseClient
+                    .from('leads')
+                    .select('id')
+                    .eq('id', deleteLeadId)
+                    .maybeSingle();
+
+                if (stillExists) {
+                    // DELETE was silently blocked — try removing via insert-based workaround
+                    // by marking as deleted, or inform the user
+                    console.warn('DELETE was silently blocked by RLS for lead:', deleteLeadId);
+                    showToast('Unable to delete lead — database permissions may need updating. Please check Supabase RLS policies.');
+                    closeDeleteModal();
+                    return;
+                }
+
+                // Remove from local cache immediately
+                allLeads = allLeads.filter(l => String(l.id) !== String(deleteLeadId));
+                applyCurrentView();
 
                 showToast('Lead deleted successfully');
                 closeDeleteModal();
