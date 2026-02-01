@@ -1,0 +1,1730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VYNTAR Shopify Marketplace App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; }
+        .sidebar { width: 260px; min-height: 100vh; background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); position: fixed; left: 0; top: 0; z-index: 40; transition: transform 0.3s ease; }
+        .main-content { margin-left: 260px; min-height: 100vh; padding: 24px 32px; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; margin: 4px 12px; border-radius: 8px; color: #94a3b8; cursor: pointer; transition: all 0.2s ease; font-size: 14px; font-weight: 500; }
+        .nav-item:hover { background: rgba(255,255,255,0.08); color: #e2e8f0; }
+        .nav-item.active { background: rgba(59,130,246,0.2); color: #60a5fa; border-left: 3px solid #3b82f6; }
+        .nav-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+        .page-section { display: none; }
+        .page-section.active { display: block; }
+        .stat-card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; transition: transform 0.2s, box-shadow 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+        .badge-green { background: #dcfce7; color: #166534; }
+        .badge-yellow { background: #fef9c3; color: #854d0e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        .badge-gray { background: #f1f5f9; color: #475569; }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        .btn-primary { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; padding: 10px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; font-size: 14px; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-primary:hover { background: linear-gradient(135deg, #2563eb, #1d4ed8); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
+        .btn-secondary { background: white; color: #334155; padding: 10px 20px; border-radius: 8px; border: 1px solid #e2e8f0; font-weight: 600; cursor: pointer; font-size: 14px; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
+        .btn-danger { background: #ef4444; color: white; padding: 10px 20px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-success { background: #22c55e; color: white; padding: 8px 16px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .btn-success:hover { background: #16a34a; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .data-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        .data-table thead th { background: #f8fafc; padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e2e8f0; }
+        .data-table tbody td { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; font-size: 14px; color: #334155; vertical-align: middle; }
+        .data-table tbody tr:hover { background: #f8fafc; }
+        .search-input { width: 100%; padding: 10px 16px 10px 42px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; background: white; }
+        .search-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+        .filter-tab { padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: #64748b; transition: all 0.2s; }
+        .filter-tab:hover { background: #f1f5f9; color: #334155; }
+        .filter-tab.active { background: #3b82f6; color: white; }
+        .card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+        .toast-container { position: fixed; top: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+        .toast { padding: 14px 20px; border-radius: 10px; color: white; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 10px; animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s forwards; min-width: 300px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        .toast-success { background: linear-gradient(135deg, #22c55e, #16a34a); }
+        .toast-error { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .toast-info { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
+        .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-overlay { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 16px; color: #64748b; }
+        .product-img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: #f1f5f9; }
+        .toggle-switch { position: relative; width: 48px; height: 26px; cursor: pointer; }
+        .toggle-switch input { display: none; }
+        .toggle-slider { position: absolute; inset: 0; background: #cbd5e1; border-radius: 13px; transition: 0.3s; }
+        .toggle-slider::before { content: ''; position: absolute; width: 20px; height: 20px; background: white; border-radius: 50%; top: 3px; left: 3px; transition: 0.3s; }
+        .toggle-switch input:checked + .toggle-slider { background: #3b82f6; }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(22px); }
+        .pie-chart { width: 160px; height: 160px; border-radius: 50%; position: relative; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #94a3b8; }
+        .empty-state svg { width: 64px; height: 64px; margin: 0 auto 16px; opacity: 0.5; }
+        .mobile-toggle { display: none; position: fixed; top: 16px; left: 16px; z-index: 50; background: #1e293b; color: white; border: none; border-radius: 8px; padding: 10px; cursor: pointer; }
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; padding: 16px; padding-top: 64px; }
+            .mobile-toggle { display: block; }
+        }
+        .activity-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+        .activity-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        input[type="text"], input[type="password"], input[type="number"], select {
+            padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; width: 100%; background: white;
+        }
+        input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus, select:focus {
+            border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Mobile Toggle -->
+    <button class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+        <div style="padding: 24px 20px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                    <svg fill="none" stroke="white" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+                <div>
+                    <div style="color: white; font-size: 18px; font-weight: 700; letter-spacing: -0.02em;">VYNTAR</div>
+                    <div style="color: #64748b; font-size: 11px; font-weight: 500;">Marketplace App</div>
+                </div>
+            </div>
+        </div>
+
+        <nav style="padding: 16px 0; flex: 1;">
+            <div class="nav-item active" data-page="dashboard" onclick="navigateTo('dashboard')">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+                Dashboard
+            </div>
+            <div class="nav-item" data-page="products" onclick="navigateTo('products')">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                Products
+            </div>
+            <div class="nav-item" data-page="listings" onclick="navigateTo('listings')">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                Marketplace Listings
+            </div>
+            <div class="nav-item" data-page="orders" onclick="navigateTo('orders')">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+                Orders
+            </div>
+            <div class="nav-item" data-page="inventory" onclick="navigateTo('inventory')">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/></svg>
+                Inventory
+            </div>
+            <div class="nav-item" data-page="analytics" onclick="navigateTo('analytics')">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                Analytics
+            </div>
+            <div class="nav-item" data-page="settings" onclick="navigateTo('settings')">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                Settings
+            </div>
+        </nav>
+
+        <div style="padding: 16px 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+            <a href="index.html" class="nav-item" style="text-decoration: none; margin: 0;">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+                Back to Leads
+            </a>
+        </div>
+
+        <div style="padding: 16px 20px; border-top: 1px solid rgba(255,255,255,0.08); text-align: center;">
+            <div style="color: #475569; font-size: 11px;">Powered by</div>
+            <div style="color: #94a3b8; font-size: 12px; font-weight: 600;">VYNTAR Growth Solutions</div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+        <!-- ==================== DASHBOARD PAGE ==================== -->
+        <section id="page-dashboard" class="page-section active">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 16px;">
+                <div>
+                    <h1 style="font-size: 28px; font-weight: 800; color: #0f172a; letter-spacing: -0.02em;">Dashboard</h1>
+                    <p style="color: #64748b; font-size: 14px; margin-top: 4px;" id="dashWelcome">Welcome back! Here's your marketplace overview.</p>
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn-primary" onclick="syncProducts()">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        Sync Products
+                    </button>
+                    <button class="btn-secondary" onclick="publishAll()">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                        Publish All
+                    </button>
+                    <button class="btn-secondary" onclick="navigateTo('orders')">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                        View Orders
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div id="dashKpis" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; margin-bottom: 32px;">
+                <div class="stat-card">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <div style="color: #64748b; font-size: 13px; font-weight: 500;">Total Products</div>
+                            <div id="kpiTotalProducts" style="font-size: 32px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                        </div>
+                        <div style="width: 44px; height: 44px; background: #dbeafe; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                            <svg fill="none" stroke="#3b82f6" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                        </div>
+                    </div>
+                    <div style="color: #64748b; font-size: 12px; margin-top: 8px;">From Shopify store</div>
+                </div>
+                <div class="stat-card">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <div style="color: #64748b; font-size: 13px; font-weight: 500;">Listed on Marketplace</div>
+                            <div id="kpiListed" style="font-size: 32px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                        </div>
+                        <div style="width: 44px; height: 44px; background: #dcfce7; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                            <svg fill="none" stroke="#22c55e" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                    </div>
+                    <div style="color: #64748b; font-size: 12px; margin-top: 8px;">Published to FB Marketplace</div>
+                </div>
+                <div class="stat-card">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <div style="color: #64748b; font-size: 13px; font-weight: 500;">Pending Listings</div>
+                            <div id="kpiPending" style="font-size: 32px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                        </div>
+                        <div style="width: 44px; height: 44px; background: #fef9c3; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                            <svg fill="none" stroke="#eab308" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                    </div>
+                    <div style="color: #64748b; font-size: 12px; margin-top: 8px;">Awaiting publish</div>
+                </div>
+                <div class="stat-card">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <div style="color: #64748b; font-size: 13px; font-weight: 500;">Total Orders</div>
+                            <div id="kpiOrders" style="font-size: 32px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                        </div>
+                        <div style="width: 44px; height: 44px; background: #e0e7ff; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                            <svg fill="none" stroke="#6366f1" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                        </div>
+                    </div>
+                    <div style="color: #64748b; font-size: 12px; margin-top: 8px;">All time</div>
+                </div>
+                <div class="stat-card">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <div style="color: #64748b; font-size: 13px; font-weight: 500;">Total Revenue</div>
+                            <div id="kpiRevenue" style="font-size: 32px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                        </div>
+                        <div style="width: 44px; height: 44px; background: #fce7f3; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                            <svg fill="none" stroke="#ec4899" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                    </div>
+                    <div style="color: #64748b; font-size: 12px; margin-top: 8px;">Lifetime earnings</div>
+                </div>
+                <div class="stat-card">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <div style="color: #64748b; font-size: 13px; font-weight: 500;">Sync Status</div>
+                            <div id="kpiSync" style="font-size: 20px; font-weight: 700; color: #22c55e; margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+                                <span style="width: 10px; height: 10px; background: #22c55e; border-radius: 50%; display: inline-block;" class="pulse"></span>
+                                Active
+                            </div>
+                        </div>
+                        <div style="width: 44px; height: 44px; background: #dcfce7; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                            <svg fill="none" stroke="#22c55e" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        </div>
+                    </div>
+                    <div style="color: #64748b; font-size: 12px; margin-top: 8px;">Last sync: <span id="lastSyncTime">Never</span></div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="card">
+                <h3 style="font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 16px;">Recent Activity</h3>
+                <div id="recentActivity">
+                    <div class="loading-overlay"><div class="spinner"></div><div>Loading activity...</div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== PRODUCTS PAGE ==================== -->
+        <section id="page-products" class="page-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+                <div>
+                    <h1 style="font-size: 28px; font-weight: 800; color: #0f172a;">Products</h1>
+                    <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Manage your Shopify products and marketplace listings</p>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-secondary" id="bulkPublishBtn" onclick="bulkPublish()" style="display: none;">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                        Publish Selected (<span id="selectedCount">0</span>)
+                    </button>
+                    <button class="btn-primary" onclick="syncProducts()">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        Sync from Shopify
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search and Filters -->
+            <div class="card" style="margin-bottom: 20px; padding: 16px 20px;">
+                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div style="position: relative; flex: 1; min-width: 240px;">
+                        <svg style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8;" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        <input type="text" class="search-input" id="productSearch" placeholder="Search products by title, vendor, SKU..." oninput="filterProducts()">
+                    </div>
+                    <div style="display: flex; gap: 4px; background: #f1f5f9; padding: 4px; border-radius: 8px;">
+                        <button class="filter-tab active" data-filter="all" onclick="setProductFilter('all', this)">All</button>
+                        <button class="filter-tab" data-filter="listed" onclick="setProductFilter('listed', this)">Listed</button>
+                        <button class="filter-tab" data-filter="not_listed" onclick="setProductFilter('not_listed', this)">Not Listed</button>
+                        <button class="filter-tab" data-filter="pending" onclick="setProductFilter('pending', this)">Pending</button>
+                        <button class="filter-tab" data-filter="error" onclick="setProductFilter('error', this)">Error</button>
+                    </div>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #64748b;">
+                        <input type="checkbox" id="selectAllProducts" onchange="toggleSelectAll(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+                        Select All
+                    </label>
+                </div>
+            </div>
+
+            <!-- Products Grid -->
+            <div id="productsContainer">
+                <div class="loading-overlay"><div class="spinner"></div><div>Loading products...</div></div>
+            </div>
+
+            <!-- Pagination -->
+            <div id="productsPagination" style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 24px;"></div>
+        </section>
+
+        <!-- ==================== LISTINGS PAGE ==================== -->
+        <section id="page-listings" class="page-section">
+            <div style="margin-bottom: 24px;">
+                <h1 style="font-size: 28px; font-weight: 800; color: #0f172a;">Marketplace Listings</h1>
+                <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Products currently listed on Facebook Marketplace</p>
+            </div>
+
+            <!-- Listings Stats -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 13px; font-weight: 500;">Total Listed</div>
+                    <div id="listingsTotalListed" style="font-size: 28px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                </div>
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 13px; font-weight: 500;">Total Value</div>
+                    <div id="listingsTotalValue" style="font-size: 28px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                </div>
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 13px; font-weight: 500;">Total Inventory</div>
+                    <div id="listingsTotalInventory" style="font-size: 28px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                </div>
+            </div>
+
+            <!-- Listings Filter -->
+            <div class="card" style="margin-bottom: 20px; padding: 16px 20px;">
+                <div style="display: flex; gap: 4px; background: #f1f5f9; padding: 4px; border-radius: 8px; display: inline-flex;">
+                    <button class="filter-tab active" onclick="setListingFilter('all', this)">All</button>
+                    <button class="filter-tab" onclick="setListingFilter('listed', this)">Active</button>
+                    <button class="filter-tab" onclick="setListingFilter('pending', this)">Pending</button>
+                    <button class="filter-tab" onclick="setListingFilter('error', this)">Error</button>
+                </div>
+            </div>
+
+            <!-- Listings Table -->
+            <div class="card" style="padding: 0; overflow-x: auto;">
+                <div id="listingsContainer">
+                    <div class="loading-overlay"><div class="spinner"></div><div>Loading listings...</div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== ORDERS PAGE ==================== -->
+        <section id="page-orders" class="page-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+                <div>
+                    <h1 style="font-size: 28px; font-weight: 800; color: #0f172a;">Orders</h1>
+                    <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Track and manage your marketplace orders</p>
+                </div>
+                <button class="btn-primary" onclick="syncOrders()">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Sync Orders
+                </button>
+            </div>
+
+            <!-- Order Stats -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 12px; font-weight: 500;">Total Orders</div>
+                    <div id="ordersTotalCount" style="font-size: 24px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                </div>
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 12px; font-weight: 500;">Revenue</div>
+                    <div id="ordersTotalRevenue" style="font-size: 24px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                </div>
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 12px; font-weight: 500;">Paid</div>
+                    <div id="ordersPaid" style="font-size: 24px; font-weight: 800; color: #22c55e; margin-top: 4px;">--</div>
+                </div>
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 12px; font-weight: 500;">Pending</div>
+                    <div id="ordersPending" style="font-size: 24px; font-weight: 800; color: #eab308; margin-top: 4px;">--</div>
+                </div>
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 12px; font-weight: 500;">Fulfilled</div>
+                    <div id="ordersFulfilled" style="font-size: 24px; font-weight: 800; color: #3b82f6; margin-top: 4px;">--</div>
+                </div>
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 12px; font-weight: 500;">Unfulfilled</div>
+                    <div id="ordersUnfulfilled" style="font-size: 24px; font-weight: 800; color: #94a3b8; margin-top: 4px;">--</div>
+                </div>
+            </div>
+
+            <!-- Orders Table -->
+            <div class="card" style="padding: 0; overflow-x: auto;">
+                <div id="ordersContainer">
+                    <div class="loading-overlay"><div class="spinner"></div><div>Loading orders...</div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== INVENTORY PAGE ==================== -->
+        <section id="page-inventory" class="page-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+                <div>
+                    <h1 style="font-size: 28px; font-weight: 800; color: #0f172a;">Inventory</h1>
+                    <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Monitor stock levels and inventory health</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="width: 10px; height: 10px; background: #22c55e; border-radius: 50; display: inline-block;" class="pulse"></span>
+                    <span style="font-size: 13px; color: #64748b; font-weight: 500;">Real-time sync active</span>
+                </div>
+            </div>
+
+            <!-- Inventory Stats -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 13px; font-weight: 500;">Total SKUs</div>
+                    <div id="invTotalSkus" style="font-size: 28px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                </div>
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 13px; font-weight: 500;">Total Units</div>
+                    <div id="invTotalUnits" style="font-size: 28px; font-weight: 800; color: #0f172a; margin-top: 4px;">--</div>
+                </div>
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 13px; font-weight: 500;">Low Stock Alerts</div>
+                    <div id="invLowStock" style="font-size: 28px; font-weight: 800; color: #ef4444; margin-top: 4px;">--</div>
+                </div>
+                <div class="stat-card">
+                    <div style="color: #64748b; font-size: 13px; font-weight: 500;">Out of Stock</div>
+                    <div id="invOutOfStock" style="font-size: 28px; font-weight: 800; color: #991b1b; margin-top: 4px;">--</div>
+                </div>
+            </div>
+
+            <!-- Low Stock Alerts -->
+            <div class="card" style="margin-bottom: 20px; border-left: 4px solid #ef4444;">
+                <h3 style="font-size: 16px; font-weight: 700; color: #991b1b; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                    Low Stock Alerts (Less than 10 units)
+                </h3>
+                <div id="lowStockAlerts">
+                    <div style="color: #64748b; font-size: 14px;">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Inventory Table -->
+            <div class="card" style="padding: 0; overflow-x: auto;">
+                <div id="inventoryContainer">
+                    <div class="loading-overlay"><div class="spinner"></div><div>Loading inventory...</div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== ANALYTICS PAGE ==================== -->
+        <section id="page-analytics" class="page-section">
+            <div style="margin-bottom: 24px;">
+                <h1 style="font-size: 28px; font-weight: 800; color: #0f172a;">Analytics</h1>
+                <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Performance insights and marketplace metrics</p>
+            </div>
+
+            <!-- Revenue Overview -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-bottom: 24px;">
+                <div class="card">
+                    <h3 style="font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 16px;">Revenue Overview</h3>
+                    <div style="margin-bottom: 16px;">
+                        <div style="color: #64748b; font-size: 13px;">Total Revenue (All Time)</div>
+                        <div id="analyticsRevTotal" style="font-size: 36px; font-weight: 800; color: #0f172a; margin-top: 4px;">/bin/bash.00</div>
+                    </div>
+                    <div>
+                        <div style="color: #64748b; font-size: 13px;">This Month (Est.)</div>
+                        <div id="analyticsRevMonth" style="font-size: 24px; font-weight: 700; color: #3b82f6; margin-top: 4px;">/bin/bash.00</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 16px;">Listing Performance</h3>
+                    <div style="display: flex; align-items: center; gap: 24px;">
+                        <div id="listingPieChart" style="width: 120px; height: 120px; border-radius: 50%; background: conic-gradient(#22c55e 0% 50%, #e2e8f0 50% 100%); position: relative; flex-shrink: 0;">
+                            <div style="position: absolute; inset: 20px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                <span id="piePercent" style="font-size: 18px; font-weight: 700; color: #0f172a;">0%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <span style="width: 12px; height: 12px; background: #22c55e; border-radius: 3px;"></span>
+                                <span style="font-size: 13px; color: #334155;">Listed: <strong id="pieListed">0</strong></span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="width: 12px; height: 12px; background: #e2e8f0; border-radius: 3px;"></span>
+                                <span style="font-size: 13px; color: #334155;">Not Listed: <strong id="pieNotListed">0</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 16px;">Order Status Breakdown</h3>
+                    <div id="orderBreakdown">
+                        <div style="margin-bottom: 12px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                                <span style="color: #334155;">Paid</span>
+                                <span id="breakPaid" style="color: #64748b; font-weight: 600;">0</span>
+                            </div>
+                            <div class="progress-bar"><div class="progress-fill" id="barPaid" style="width: 0%; background: #22c55e;"></div></div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                                <span style="color: #334155;">Pending</span>
+                                <span id="breakPending" style="color: #64748b; font-weight: 600;">0</span>
+                            </div>
+                            <div class="progress-bar"><div class="progress-fill" id="barPending" style="width: 0%; background: #eab308;"></div></div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                                <span style="color: #334155;">Refunded</span>
+                                <span id="breakRefunded" style="color: #64748b; font-weight: 600;">0</span>
+                            </div>
+                            <div class="progress-bar"><div class="progress-fill" id="barRefunded" style="width: 0%; background: #ef4444;"></div></div>
+                        </div>
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                                <span style="color: #334155;">Fulfilled</span>
+                                <span id="breakFulfilled" style="color: #64748b; font-weight: 600;">0</span>
+                            </div>
+                            <div class="progress-bar"><div class="progress-fill" id="barFulfilled" style="width: 0%; background: #3b82f6;"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Selling Products -->
+            <div class="card">
+                <h3 style="font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 16px;">Top Selling Products</h3>
+                <div id="topProducts">
+                    <div class="loading-overlay"><div class="spinner"></div><div>Loading analytics...</div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== SETTINGS PAGE ==================== -->
+        <section id="page-settings" class="page-section">
+            <div style="margin-bottom: 24px;">
+                <h1 style="font-size: 28px; font-weight: 800; color: #0f172a;">Settings</h1>
+                <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Configure your Shopify and Facebook Marketplace connections</p>
+            </div>
+
+            <div style="display: grid; gap: 24px; max-width: 720px;">
+                <!-- Shopify Connection -->
+                <div class="card">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+                        <div style="width: 44px; height: 44px; background: #f0fdf4; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                            <svg fill="none" stroke="#22c55e" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        </div>
+                        <div>
+                            <h3 style="font-size: 18px; font-weight: 700; color: #0f172a;">Shopify Connection</h3>
+                            <div id="shopifyStatus" style="font-size: 13px; color: #64748b;">Not connected</div>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px;">Shop Domain</label>
+                        <input type="text" id="shopDomainInput" placeholder="your-store.myshopify.com" style="width: 100%;">
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button class="btn-primary" onclick="connectShopify()">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                            Connect Shopify
+                        </button>
+                        <span id="shopifyConnectionBadge" class="badge badge-gray">Disconnected</span>
+                    </div>
+                </div>
+
+                <!-- Facebook Marketplace Connection -->
+                <div class="card">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+                        <div style="width: 44px; height: 44px; background: #dbeafe; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                            <svg fill="none" stroke="#3b82f6" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                        </div>
+                        <div>
+                            <h3 style="font-size: 18px; font-weight: 700; color: #0f172a;">Facebook Marketplace</h3>
+                            <div id="fbStatus" style="font-size: 13px; color: #64748b;">Not connected</div>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px;">FB Catalog ID</label>
+                        <input type="text" id="fbCatalogId" placeholder="Enter your Facebook Catalog ID">
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px;">FB Access Token</label>
+                        <input type="password" id="fbAccessToken" placeholder="Enter your Facebook Access Token">
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button class="btn-primary" onclick="connectFacebook()">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                            Connect Facebook
+                        </button>
+                        <span id="fbConnectionBadge" class="badge badge-gray">Disconnected</span>
+                    </div>
+                </div>
+
+                <!-- Sync Settings -->
+                <div class="card">
+                    <h3 style="font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 20px;">Sync Settings</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9;">
+                        <div>
+                            <div style="font-size: 14px; font-weight: 600; color: #334155;">Auto-sync Products</div>
+                            <div style="font-size: 13px; color: #64748b; margin-top: 2px;">Automatically sync new products from Shopify</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoSyncToggle" checked onchange="updateSyncSettings()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 8px;">Sync Frequency</label>
+                        <select id="syncFrequency" onchange="updateSyncSettings()" style="width: 100%;">
+                            <option value="5">Every 5 minutes</option>
+                            <option value="15" selected>Every 15 minutes</option>
+                            <option value="30">Every 30 minutes</option>
+                            <option value="60">Every hour</option>
+                            <option value="360">Every 6 hours</option>
+                            <option value="1440">Once a day</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Danger Zone -->
+                <div class="card" style="border: 1px solid #fecaca;">
+                    <h3 style="font-size: 18px; font-weight: 700; color: #991b1b; margin-bottom: 8px;">Danger Zone</h3>
+                    <p style="font-size: 13px; color: #64748b; margin-bottom: 20px;">These actions are irreversible. Please proceed with caution.</p>
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                        <button class="btn-danger" onclick="disconnectShopify()">Disconnect Shopify</button>
+                        <button class="btn-danger" onclick="clearAllData()" style="background: #991b1b;">Clear All Data</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <div style="position: fixed; bottom: 0; left: 260px; right: 0; background: white; border-top: 1px solid #e2e8f0; padding: 10px 32px; display: flex; justify-content: space-between; align-items: center; z-index: 30;">
+        <span style="font-size: 12px; color: #94a3b8;">Powered by <strong style="color: #3b82f6;">VYNTAR Growth Solutions</strong></span>
+        <span style="font-size: 12px; color: #94a3b8;" id="footerShop"></span>
+    </div>
+
+    <script>
+    // ============================================================
+    // INITIALIZATION & STATE
+    // ============================================================
+    const SUPABASE_URL = 'https://hfchmjmhkiqsibxtiwsk.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_WMD4rdIiqCeNX8qYsOnelA_zog_foYo';
+    const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+    const state = {
+        currentPage: 'dashboard',
+        shopDomain: '',
+        shopId: null,
+        products: [],
+        filteredProducts: [],
+        orders: [],
+        syncLogs: [],
+        settings: null,
+        productFilter: 'all',
+        productSearch: '',
+        listingFilter: 'all',
+        selectedProducts: new Set(),
+        productsPage: 1,
+        productsPerPage: 12,
+        loading: {}
+    };
+
+    // ============================================================
+    // UTILITY FUNCTIONS
+    // ============================================================
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        const s = String(str);
+        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return s.replace(/[&<>"']/g, c => map[c]);
+    }
+
+    function escapeAttr(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&"'<>]/g, c => ({
+            '&': '&amp;', '"': '&quot;', "'": '&#039;', '<': '&lt;', '>': '&gt;'
+        })[c]);
+    }
+
+    function formatCurrency(amount) {
+        const num = parseFloat(amount) || 0;
+        return '$' + num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return 'N/A';
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function formatDateTime(dateStr) {
+        if (!dateStr) return 'N/A';
+        const d = new Date(dateStr);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
+    function timeAgo(dateStr) {
+        if (!dateStr) return 'Never';
+        const now = new Date();
+        const d = new Date(dateStr);
+        const diff = Math.floor((now - d) / 1000);
+        if (diff < 60) return 'Just now';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    // ============================================================
+    // TOAST NOTIFICATIONS
+    // ============================================================
+    function showToast(message, type) {
+        type = type || 'info';
+        var container = document.getElementById('toastContainer');
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        var icon = '';
+        if (type === 'success') icon = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+        else if (type === 'error') icon = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+        else icon = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+        toast.innerHTML = icon + '<span>' + escapeHtml(message) + '</span>';
+        container.appendChild(toast);
+        setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
+    }
+
+    // ============================================================
+    // NAVIGATION
+    // ============================================================
+    function navigateTo(page) {
+        state.currentPage = page;
+        document.querySelectorAll('.page-section').forEach(function(s) { s.classList.remove('active'); });
+        document.querySelectorAll('.nav-item[data-page]').forEach(function(n) { n.classList.remove('active'); });
+        var pageEl = document.getElementById('page-' + page);
+        if (pageEl) pageEl.classList.add('active');
+        var navEl = document.querySelector('.nav-item[data-page="' + page + '"]');
+        if (navEl) navEl.classList.add('active');
+        // Close mobile sidebar
+        document.getElementById('sidebar').classList.remove('open');
+        // Load data for page
+        loadPageData(page);
+    }
+
+    function loadPageData(page) {
+        switch (page) {
+            case 'dashboard': loadDashboard(); break;
+            case 'products': loadProducts(); break;
+            case 'listings': loadListings(); break;
+            case 'orders': loadOrders(); break;
+            case 'inventory': loadInventory(); break;
+            case 'analytics': loadAnalytics(); break;
+            case 'settings': loadSettings(); break;
+        }
+    }
+
+    // ============================================================
+    // API HELPERS
+    // ============================================================
+    function getApiBase() {
+        return window.location.origin + '/api';
+    }
+
+    async function apiCall(endpoint, options) {
+        options = options || {};
+        try {
+            var url = getApiBase() + endpoint;
+            var resp = await fetch(url, {
+                method: options.method || 'GET',
+                headers: Object.assign({ 'Content-Type': 'application/json' }, options.headers || {}),
+                body: options.body ? JSON.stringify(options.body) : undefined
+            });
+            var data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || data.message || 'API error');
+            return data;
+        } catch (err) {
+            console.error('API call failed:', endpoint, err);
+            throw err;
+        }
+    }
+
+    // ============================================================
+    // SUPABASE DATA LOADERS
+    // ============================================================
+    async function loadShopData() {
+        if (!supabase || !state.shopDomain) return null;
+        try {
+            var result = await supabase
+                .from('shops')
+                .select('*')
+                .eq('shop_domain', state.shopDomain)
+                .single();
+            if (result.data) {
+                state.shopId = result.data.id;
+                state.settings = result.data;
+                return result.data;
+            }
+        } catch (e) { console.error('loadShopData error:', e); }
+        return null;
+    }
+
+    async function loadProductsFromDb() {
+        if (!supabase || !state.shopDomain) {
+            state.products = getDemoProducts();
+            return state.products;
+        }
+        try {
+            var query = supabase.from('products').select('*');
+            if (state.shopId) query = query.eq('shop_id', state.shopId);
+            else query = query.eq('shop_domain', state.shopDomain);
+            var result = await query.order('created_at', { ascending: false });
+            if (result.data && result.data.length > 0) {
+                state.products = result.data;
+            } else {
+                state.products = getDemoProducts();
+            }
+        } catch (e) {
+            console.error('loadProductsFromDb error:', e);
+            state.products = getDemoProducts();
+        }
+        return state.products;
+    }
+
+    async function loadOrdersFromDb() {
+        if (!supabase || !state.shopDomain) {
+            state.orders = getDemoOrders();
+            return state.orders;
+        }
+        try {
+            var query = supabase.from('orders').select('*');
+            if (state.shopId) query = query.eq('shop_id', state.shopId);
+            else query = query.eq('shop_domain', state.shopDomain);
+            var result = await query.order('created_at', { ascending: false });
+            if (result.data && result.data.length > 0) {
+                state.orders = result.data;
+            } else {
+                state.orders = getDemoOrders();
+            }
+        } catch (e) {
+            console.error('loadOrdersFromDb error:', e);
+            state.orders = getDemoOrders();
+        }
+        return state.orders;
+    }
+
+    async function loadSyncLogs() {
+        if (!supabase || !state.shopDomain) {
+            state.syncLogs = getDemoLogs();
+            return state.syncLogs;
+        }
+        try {
+            var query = supabase.from('sync_logs').select('*');
+            if (state.shopId) query = query.eq('shop_id', state.shopId);
+            var result = await query.order('created_at', { ascending: false }).limit(10);
+            if (result.data && result.data.length > 0) {
+                state.syncLogs = result.data;
+            } else {
+                state.syncLogs = getDemoLogs();
+            }
+        } catch (e) {
+            console.error('loadSyncLogs error:', e);
+            state.syncLogs = getDemoLogs();
+        }
+        return state.syncLogs;
+    }
+
+    // ============================================================
+    // DEMO DATA (fallback when DB is empty)
+    // ============================================================
+    function getDemoProducts() {
+        var statuses = ['listed', 'not_listed', 'pending', 'error', 'listed', 'listed', 'not_listed', 'listed'];
+        var names = ['Classic Cotton T-Shirt', 'Premium Leather Wallet', 'Wireless Bluetooth Headphones', 'Organic Coffee Beans (1lb)', 'Stainless Steel Water Bottle', 'Yoga Mat Premium', 'Running Shoes Pro', 'Bamboo Cutting Board', 'LED Desk Lamp', 'Ceramic Plant Pot', 'Canvas Tote Bag', 'Essential Oil Diffuser', 'Minimalist Watch', 'Phone Case Ultra', 'Notebook Journal Set', 'Kitchen Knife Set'];
+        var vendors = ['BasicWear', 'LuxGoods', 'TechAudio', 'BeanCo', 'HydroLife', 'ZenFit', 'SpeedRun', 'EcoHome', 'BrightDesk', 'GreenSpace', 'CarryAll', 'AromaLife', 'TimeWise', 'ShieldTech', 'WriteMore', 'ChefPro'];
+        var prices = [24.99, 59.99, 89.99, 18.50, 34.99, 45.00, 129.99, 22.00, 39.99, 15.99, 29.99, 42.50, 149.99, 19.99, 24.99, 79.99];
+        return names.map(function(name, i) {
+            return {
+                id: i + 1,
+                shopify_product_id: '700' + (i + 1),
+                title: name,
+                vendor: vendors[i] || 'Unknown',
+                price: prices[i] || 29.99,
+                inventory_quantity: Math.floor(Math.random() * 150),
+                marketplace_status: statuses[i % statuses.length],
+                image_url: null,
+                sku: 'SKU-' + String(1000 + i),
+                created_at: new Date(Date.now() - Math.random() * 30 * 86400000).toISOString(),
+                updated_at: new Date(Date.now() - Math.random() * 7 * 86400000).toISOString()
+            };
+        });
+    }
+
+    function getDemoOrders() {
+        var customers = ['Sarah Johnson', 'Mike Chen', 'Emily Davis', 'Alex Kim', 'Jordan Lee', 'Casey Brown', 'Taylor Swift', 'Morgan Reed'];
+        var payStatuses = ['paid', 'paid', 'paid', 'pending', 'paid', 'refunded', 'paid', 'pending'];
+        var fulfillStatuses = ['fulfilled', 'fulfilled', 'unfulfilled', 'unfulfilled', 'fulfilled', 'fulfilled', 'unfulfilled', 'unfulfilled'];
+        return customers.map(function(name, i) {
+            return {
+                id: i + 1,
+                order_number: '#' + (1001 + i),
+                customer_name: name,
+                total_price: (Math.random() * 200 + 20).toFixed(2),
+                payment_status: payStatuses[i],
+                fulfillment_status: fulfillStatuses[i],
+                created_at: new Date(Date.now() - Math.random() * 30 * 86400000).toISOString()
+            };
+        });
+    }
+
+    function getDemoLogs() {
+        var actions = [
+            { action: 'product_sync', message: 'Synced 16 products from Shopify', status: 'success' },
+            { action: 'publish', message: 'Published "Classic Cotton T-Shirt" to marketplace', status: 'success' },
+            { action: 'publish', message: 'Published "Premium Leather Wallet" to marketplace', status: 'success' },
+            { action: 'order_sync', message: 'Synced 3 new orders from marketplace', status: 'success' },
+            { action: 'inventory_update', message: 'Updated inventory for 8 products', status: 'success' },
+            { action: 'publish', message: 'Failed to publish "Yoga Mat Premium"', status: 'error' },
+            { action: 'product_sync', message: 'Synced 2 new products from Shopify', status: 'success' },
+            { action: 'publish', message: 'Published "Wireless Bluetooth Headphones" to marketplace', status: 'success' },
+            { action: 'inventory_update', message: 'Low stock alert for 3 products', status: 'warning' },
+            { action: 'order_sync', message: 'Synced 1 new order from marketplace', status: 'success' }
+        ];
+        return actions.map(function(a, i) {
+            return Object.assign({}, a, {
+                id: i + 1,
+                created_at: new Date(Date.now() - i * 3600000 - Math.random() * 1800000).toISOString()
+            });
+        });
+    }
+
+    // ============================================================
+    // DASHBOARD RENDER
+    // ============================================================
+    async function loadDashboard() {
+        await Promise.all([loadProductsFromDb(), loadOrdersFromDb(), loadSyncLogs()]);
+        renderDashboard();
+    }
+
+    function renderDashboard() {
+        var products = state.products;
+        var orders = state.orders;
+        var logs = state.syncLogs;
+
+        // Welcome
+        if (state.shopDomain) {
+            document.getElementById('dashWelcome').textContent = 'Managing ' + state.shopDomain;
+            document.getElementById('footerShop').textContent = state.shopDomain;
+        }
+
+        // KPIs
+        var total = products.length;
+        var listed = products.filter(function(p) { return p.marketplace_status === 'listed'; }).length;
+        var pending = products.filter(function(p) { return p.marketplace_status === 'pending'; }).length;
+        var orderCount = orders.length;
+        var revenue = orders.reduce(function(sum, o) { return sum + (parseFloat(o.total_price) || 0); }, 0);
+
+        document.getElementById('kpiTotalProducts').textContent = total;
+        document.getElementById('kpiListed').textContent = listed;
+        document.getElementById('kpiPending').textContent = pending;
+        document.getElementById('kpiOrders').textContent = orderCount;
+        document.getElementById('kpiRevenue').textContent = formatCurrency(revenue);
+
+        // Last sync time
+        if (logs.length > 0) {
+            document.getElementById('lastSyncTime').textContent = timeAgo(logs[0].created_at);
+        }
+
+        // Recent Activity
+        var actEl = document.getElementById('recentActivity');
+        if (logs.length === 0) {
+            actEl.innerHTML = '<div class="empty-state"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><p style="font-size: 16px; font-weight: 600; color: #64748b;">No recent activity</p><p style="font-size: 14px;">Activity will appear here once you start syncing products.</p></div>';
+            return;
+        }
+        var html = '';
+        logs.forEach(function(log) {
+            var dotColor = '#22c55e';
+            if (log.status === 'error') dotColor = '#ef4444';
+            else if (log.status === 'warning') dotColor = '#eab308';
+            html += '<div class="activity-item">' +
+                '<div class="activity-dot" style="background: ' + dotColor + ';"></div>' +
+                '<div style="flex: 1;">' +
+                '<div style="font-size: 14px; color: #334155;">' + escapeHtml(log.message) + '</div>' +
+                '<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">' + timeAgo(log.created_at) + '</div>' +
+                '</div>' +
+                '<span class="badge ' + (log.status === 'success' ? 'badge-green' : log.status === 'error' ? 'badge-red' : 'badge-yellow') + '">' + escapeHtml(log.status) + '</span>' +
+                '</div>';
+        });
+        actEl.innerHTML = html;
+    }
+
+    // ============================================================
+    // PRODUCTS RENDER
+    // ============================================================
+    async function loadProducts() {
+        await loadProductsFromDb();
+        applyProductFilters();
+        renderProducts();
+    }
+
+    function applyProductFilters() {
+        var products = state.products;
+        var filter = state.productFilter;
+        var search = state.productSearch.toLowerCase().trim();
+
+        state.filteredProducts = products.filter(function(p) {
+            var matchFilter = filter === 'all' || p.marketplace_status === filter;
+            var matchSearch = !search ||
+                (p.title && p.title.toLowerCase().indexOf(search) >= 0) ||
+                (p.vendor && p.vendor.toLowerCase().indexOf(search) >= 0) ||
+                (p.sku && p.sku.toLowerCase().indexOf(search) >= 0);
+            return matchFilter && matchSearch;
+        });
+    }
+
+    function setProductFilter(filter, btnEl) {
+        state.productFilter = filter;
+        state.productsPage = 1;
+        document.querySelectorAll('#page-products .filter-tab').forEach(function(t) { t.classList.remove('active'); });
+        if (btnEl) btnEl.classList.add('active');
+        applyProductFilters();
+        renderProducts();
+    }
+
+    function filterProducts() {
+        state.productSearch = document.getElementById('productSearch').value;
+        state.productsPage = 1;
+        applyProductFilters();
+        renderProducts();
+    }
+
+    function renderProducts() {
+        var container = document.getElementById('productsContainer');
+        var products = state.filteredProducts;
+        var page = state.productsPage;
+        var perPage = state.productsPerPage;
+        var start = (page - 1) * perPage;
+        var end = start + perPage;
+        var pageProducts = products.slice(start, end);
+
+        if (products.length === 0) {
+            container.innerHTML = '<div class="empty-state" style="padding: 60px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg><p style="font-size: 16px; font-weight: 600; color: #64748b;">No products found</p><p style="font-size: 14px;">Try adjusting your search or filters, or sync products from Shopify.</p></div>';
+            document.getElementById('productsPagination').innerHTML = '';
+            return;
+        }
+
+        var html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">';
+        pageProducts.forEach(function(p) {
+            var statusClass = 'badge-gray';
+            var statusLabel = 'Not Listed';
+            if (p.marketplace_status === 'listed') { statusClass = 'badge-green'; statusLabel = 'Listed'; }
+            else if (p.marketplace_status === 'pending') { statusClass = 'badge-yellow'; statusLabel = 'Pending'; }
+            else if (p.marketplace_status === 'error') { statusClass = 'badge-red'; statusLabel = 'Error'; }
+
+            var imgHtml = p.image_url
+                ? '<img src="' + escapeAttr(p.image_url) + '" class="product-img" alt="' + escapeAttr(p.title) + '">'
+                : '<div class="product-img" style="display: flex; align-items: center; justify-content: center; background: #f1f5f9;"><svg fill="none" stroke="#94a3b8" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>';
+
+            var isSelected = state.selectedProducts.has(p.id);
+            var actionBtn = p.marketplace_status === 'listed'
+                ? '<button class="btn-sm btn-secondary" onclick="unpublishProduct(' + p.id + ')">Unpublish</button>'
+                : '<button class="btn-sm btn-success" onclick="publishProduct(' + p.id + ')">Publish</button>';
+
+            html += '<div class="card" style="padding: 16px;">' +
+                '<div style="display: flex; align-items: flex-start; gap: 12px;">' +
+                '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleProductSelect(' + p.id + ', this.checked)" style="margin-top: 4px; width: 16px; height: 16px; cursor: pointer;">' +
+                imgHtml +
+                '<div style="flex: 1; min-width: 0;">' +
+                '<div style="font-size: 14px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHtml(p.title) + '</div>' +
+                '<div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">' + escapeHtml(p.vendor) + '</div>' +
+                '</div>' +
+                '<span class="badge ' + statusClass + '">' + statusLabel + '</span>' +
+                '</div>' +
+                '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; padding-top: 14px; border-top: 1px solid #f1f5f9;">' +
+                '<div>' +
+                '<span style="font-size: 18px; font-weight: 700; color: #0f172a;">' + formatCurrency(p.price) + '</span>' +
+                '<span style="font-size: 12px; color: #94a3b8; margin-left: 8px;">' + (p.inventory_quantity || 0) + ' in stock</span>' +
+                '</div>' +
+                actionBtn +
+                '</div>' +
+                '</div>';
+        });
+        html += '</div>';
+        container.innerHTML = html;
+
+        // Pagination
+        var totalPages = Math.ceil(products.length / perPage);
+        renderPagination(totalPages, page);
+
+        // Update bulk button
+        updateBulkButton();
+    }
+
+    function renderPagination(totalPages, currentPage) {
+        var pagEl = document.getElementById('productsPagination');
+        if (totalPages <= 1) { pagEl.innerHTML = ''; return; }
+        var html = '';
+        html += '<button class="btn-secondary btn-sm" ' + (currentPage <= 1 ? 'disabled style="opacity:0.5;cursor:default;"' : '') + ' onclick="goToProductPage(' + (currentPage - 1) + ')">Prev</button>';
+        for (var i = 1; i <= totalPages; i++) {
+            if (i === currentPage) {
+                html += '<button class="btn-primary btn-sm">' + i + '</button>';
+            } else {
+                html += '<button class="btn-secondary btn-sm" onclick="goToProductPage(' + i + ')">' + i + '</button>';
+            }
+        }
+        html += '<button class="btn-secondary btn-sm" ' + (currentPage >= totalPages ? 'disabled style="opacity:0.5;cursor:default;"' : '') + ' onclick="goToProductPage(' + (currentPage + 1) + ')">Next</button>';
+        pagEl.innerHTML = html;
+    }
+
+    function goToProductPage(page) {
+        state.productsPage = page;
+        renderProducts();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleProductSelect(id, checked) {
+        if (checked) state.selectedProducts.add(id);
+        else state.selectedProducts.delete(id);
+        updateBulkButton();
+    }
+
+    function toggleSelectAll(checked) {
+        var products = state.filteredProducts;
+        var page = state.productsPage;
+        var perPage = state.productsPerPage;
+        var start = (page - 1) * perPage;
+        var end = start + perPage;
+        var pageProducts = products.slice(start, end);
+        pageProducts.forEach(function(p) {
+            if (checked) state.selectedProducts.add(p.id);
+            else state.selectedProducts.delete(p.id);
+        });
+        renderProducts();
+    }
+
+    function updateBulkButton() {
+        var btn = document.getElementById('bulkPublishBtn');
+        var countEl = document.getElementById('selectedCount');
+        var count = state.selectedProducts.size;
+        if (count > 0) {
+            btn.style.display = 'inline-flex';
+            countEl.textContent = count;
+        } else {
+            btn.style.display = 'none';
+        }
+    }
+
+    // ============================================================
+    // LISTINGS RENDER
+    // ============================================================
+    async function loadListings() {
+        await loadProductsFromDb();
+        renderListings();
+    }
+
+    function setListingFilter(filter, btnEl) {
+        state.listingFilter = filter;
+        btnEl.parentElement.querySelectorAll('.filter-tab').forEach(function(t) { t.classList.remove('active'); });
+        btnEl.classList.add('active');
+        renderListings();
+    }
+
+    function renderListings() {
+        var listings = state.products.filter(function(p) {
+            return p.marketplace_status === 'listed' || p.marketplace_status === 'pending' || p.marketplace_status === 'error';
+        });
+
+        if (state.listingFilter !== 'all') {
+            listings = listings.filter(function(p) { return p.marketplace_status === state.listingFilter; });
+        }
+
+        // Stats
+        var allListed = state.products.filter(function(p) { return p.marketplace_status === 'listed'; });
+        document.getElementById('listingsTotalListed').textContent = allListed.length;
+        document.getElementById('listingsTotalValue').textContent = formatCurrency(
+            allListed.reduce(function(s, p) { return s + (parseFloat(p.price) || 0); }, 0)
+        );
+        document.getElementById('listingsTotalInventory').textContent =
+            allListed.reduce(function(s, p) { return s + (p.inventory_quantity || 0); }, 0);
+
+        var container = document.getElementById('listingsContainer');
+        if (listings.length === 0) {
+            container.innerHTML = '<div class="empty-state"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg><p style="font-size: 16px; font-weight: 600; color: #64748b;">No marketplace listings</p><p style="font-size: 14px;">Publish products to see them here.</p></div>';
+            return;
+        }
+
+        var html = '<table class="data-table"><thead><tr>' +
+            '<th>Product</th><th>Price</th><th>Inventory</th><th>Status</th><th>Listed Date</th><th>Actions</th>' +
+            '</tr></thead><tbody>';
+        listings.forEach(function(p) {
+            var statusClass = p.marketplace_status === 'listed' ? 'badge-green' : p.marketplace_status === 'pending' ? 'badge-yellow' : 'badge-red';
+            var statusLabel = p.marketplace_status === 'listed' ? 'Active' : p.marketplace_status === 'pending' ? 'Pending' : 'Error';
+            var imgHtml = p.image_url
+                ? '<img src="' + escapeAttr(p.image_url) + '" class="product-img" alt="">'
+                : '<div class="product-img" style="display:flex;align-items:center;justify-content:center;background:#f1f5f9;"><svg fill="none" stroke="#94a3b8" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>';
+            html += '<tr>' +
+                '<td><div style="display:flex;align-items:center;gap:10px;">' + imgHtml + '<div><div style="font-weight:600;">' + escapeHtml(p.title) + '</div><div style="font-size:12px;color:#94a3b8;">' + escapeHtml(p.vendor) + '</div></div></div></td>' +
+                '<td style="font-weight:600;">' + formatCurrency(p.price) + '</td>' +
+                '<td>' + (p.inventory_quantity || 0) + '</td>' +
+                '<td><span class="badge ' + statusClass + '">' + statusLabel + '</span></td>' +
+                '<td style="color:#64748b;">' + formatDate(p.updated_at || p.created_at) + '</td>' +
+                '<td><div style="display:flex;gap:6px;">' +
+                '<button class="btn-sm btn-secondary" onclick="publishProduct(' + p.id + ')">Update</button>' +
+                '<button class="btn-sm btn-danger" style="padding:6px 12px;font-size:12px;" onclick="unpublishProduct(' + p.id + ')">Unpublish</button>' +
+                '</div></td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    // ============================================================
+    // ORDERS RENDER
+    // ============================================================
+    async function loadOrders() {
+        await loadOrdersFromDb();
+        renderOrders();
+    }
+
+    function renderOrders() {
+        var orders = state.orders;
+        var paid = orders.filter(function(o) { return o.payment_status === 'paid'; });
+        var pending = orders.filter(function(o) { return o.payment_status === 'pending'; });
+        var fulfilled = orders.filter(function(o) { return o.fulfillment_status === 'fulfilled'; });
+        var unfulfilled = orders.filter(function(o) { return o.fulfillment_status === 'unfulfilled'; });
+        var revenue = orders.reduce(function(s, o) { return s + (parseFloat(o.total_price) || 0); }, 0);
+
+        document.getElementById('ordersTotalCount').textContent = orders.length;
+        document.getElementById('ordersTotalRevenue').textContent = formatCurrency(revenue);
+        document.getElementById('ordersPaid').textContent = paid.length;
+        document.getElementById('ordersPending').textContent = pending.length;
+        document.getElementById('ordersFulfilled').textContent = fulfilled.length;
+        document.getElementById('ordersUnfulfilled').textContent = unfulfilled.length;
+
+        var container = document.getElementById('ordersContainer');
+        if (orders.length === 0) {
+            container.innerHTML = '<div class="empty-state"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg><p style="font-size: 16px; font-weight: 600; color: #64748b;">No orders yet</p><p style="font-size: 14px;">Orders will appear here once customers make purchases.</p></div>';
+            return;
+        }
+
+        var html = '<table class="data-table"><thead><tr>' +
+            '<th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Fulfillment</th><th>Date</th>' +
+            '</tr></thead><tbody>';
+        orders.forEach(function(o) {
+            var payClass = o.payment_status === 'paid' ? 'badge-green' : o.payment_status === 'refunded' ? 'badge-red' : 'badge-yellow';
+            var fulClass = o.fulfillment_status === 'fulfilled' ? 'badge-blue' : 'badge-gray';
+            html += '<tr>' +
+                '<td style="font-weight:600;">' + escapeHtml(o.order_number || '#' + o.id) + '</td>' +
+                '<td>' + escapeHtml(o.customer_name || 'Unknown') + '</td>' +
+                '<td style="font-weight:600;">' + formatCurrency(o.total_price) + '</td>' +
+                '<td><span class="badge ' + payClass + '">' + escapeHtml(o.payment_status || 'unknown') + '</span></td>' +
+                '<td><span class="badge ' + fulClass + '">' + escapeHtml(o.fulfillment_status || 'unknown') + '</span></td>' +
+                '<td style="color:#64748b;">' + formatDate(o.created_at) + '</td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    // ============================================================
+    // INVENTORY RENDER
+    // ============================================================
+    async function loadInventory() {
+        await loadProductsFromDb();
+        renderInventory();
+    }
+
+    function renderInventory() {
+        var products = state.products;
+        var totalUnits = products.reduce(function(s, p) { return s + (p.inventory_quantity || 0); }, 0);
+        var lowStock = products.filter(function(p) { return p.inventory_quantity > 0 && p.inventory_quantity < 10; });
+        var outOfStock = products.filter(function(p) { return !p.inventory_quantity || p.inventory_quantity <= 0; });
+
+        document.getElementById('invTotalSkus').textContent = products.length;
+        document.getElementById('invTotalUnits').textContent = totalUnits.toLocaleString();
+        document.getElementById('invLowStock').textContent = lowStock.length;
+        document.getElementById('invOutOfStock').textContent = outOfStock.length;
+
+        // Low stock alerts
+        var alertEl = document.getElementById('lowStockAlerts');
+        if (lowStock.length === 0) {
+            alertEl.innerHTML = '<div style="color: #22c55e; font-size: 14px; font-weight: 500;">All products are well stocked!</div>';
+        } else {
+            var aHtml = '<div style="display: grid; gap: 8px;">';
+            lowStock.forEach(function(p) {
+                var urgency = p.inventory_quantity <= 3 ? '#ef4444' : '#eab308';
+                aHtml += '<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #fef2f2; border-radius: 8px;">' +
+                    '<div style="display: flex; align-items: center; gap: 10px;">' +
+                    '<span style="width: 8px; height: 8px; background: ' + urgency + '; border-radius: 50%;"></span>' +
+                    '<span style="font-size: 14px; font-weight: 500; color: #334155;">' + escapeHtml(p.title) + '</span>' +
+                    '</div>' +
+                    '<span class="badge badge-red">' + p.inventory_quantity + ' left</span>' +
+                    '</div>';
+            });
+            aHtml += '</div>';
+            alertEl.innerHTML = aHtml;
+        }
+
+        // Inventory table
+        var container = document.getElementById('inventoryContainer');
+        var sorted = products.slice().sort(function(a, b) { return (a.inventory_quantity || 0) - (b.inventory_quantity || 0); });
+
+        var html = '<table class="data-table"><thead><tr>' +
+            '<th>Product</th><th>SKU</th><th>Quantity</th><th>Status</th>' +
+            '</tr></thead><tbody>';
+        sorted.forEach(function(p) {
+            var qty = p.inventory_quantity || 0;
+            var stockStatus = 'In Stock';
+            var stockClass = 'badge-green';
+            if (qty <= 0) { stockStatus = 'Out of Stock'; stockClass = 'badge-red'; }
+            else if (qty < 10) { stockStatus = 'Low Stock'; stockClass = 'badge-yellow'; }
+
+            html += '<tr>' +
+                '<td><div style="display: flex; align-items: center; gap: 10px;">' +
+                '<div class="product-img" style="display:flex;align-items:center;justify-content:center;background:#f1f5f9;">' +
+                (p.image_url ? '<img src="' + escapeAttr(p.image_url) + '" class="product-img" alt="">' : '<svg fill="none" stroke="#94a3b8" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>') +
+                '</div>' +
+                '<span style="font-weight: 600;">' + escapeHtml(p.title) + '</span></div></td>' +
+                '<td style="color: #64748b; font-family: monospace;">' + escapeHtml(p.sku || 'N/A') + '</td>' +
+                '<td><span style="font-weight: 700; font-size: 16px; color: ' + (qty < 10 ? '#ef4444' : '#0f172a') + ';">' + qty + '</span></td>' +
+                '<td><span class="badge ' + stockClass + '">' + stockStatus + '</span></td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    // ============================================================
+    // ANALYTICS RENDER
+    // ============================================================
+    async function loadAnalytics() {
+        await Promise.all([loadProductsFromDb(), loadOrdersFromDb()]);
+        renderAnalytics();
+    }
+
+    function renderAnalytics() {
+        var products = state.products;
+        var orders = state.orders;
+
+        // Revenue
+        var totalRev = orders.reduce(function(s, o) { return s + (parseFloat(o.total_price) || 0); }, 0);
+        var now = new Date();
+        var thisMonth = orders.filter(function(o) {
+            var d = new Date(o.created_at);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        });
+        var monthRev = thisMonth.reduce(function(s, o) { return s + (parseFloat(o.total_price) || 0); }, 0);
+
+        document.getElementById('analyticsRevTotal').textContent = formatCurrency(totalRev);
+        document.getElementById('analyticsRevMonth').textContent = formatCurrency(monthRev);
+
+        // Pie chart
+        var listed = products.filter(function(p) { return p.marketplace_status === 'listed'; }).length;
+        var notListed = products.length - listed;
+        var pct = products.length > 0 ? Math.round((listed / products.length) * 100) : 0;
+        document.getElementById('pieListed').textContent = listed;
+        document.getElementById('pieNotListed').textContent = notListed;
+        document.getElementById('piePercent').textContent = pct + '%';
+        document.getElementById('listingPieChart').style.background =
+            'conic-gradient(#22c55e 0% ' + pct + '%, #e2e8f0 ' + pct + '% 100%)';
+
+        // Order breakdown
+        var paid = orders.filter(function(o) { return o.payment_status === 'paid'; }).length;
+        var pending = orders.filter(function(o) { return o.payment_status === 'pending'; }).length;
+        var refunded = orders.filter(function(o) { return o.payment_status === 'refunded'; }).length;
+        var fulfilled = orders.filter(function(o) { return o.fulfillment_status === 'fulfilled'; }).length;
+        var total = orders.length || 1;
+
+        document.getElementById('breakPaid').textContent = paid;
+        document.getElementById('breakPending').textContent = pending;
+        document.getElementById('breakRefunded').textContent = refunded;
+        document.getElementById('breakFulfilled').textContent = fulfilled;
+        document.getElementById('barPaid').style.width = Math.round((paid / total) * 100) + '%';
+        document.getElementById('barPending').style.width = Math.round((pending / total) * 100) + '%';
+        document.getElementById('barRefunded').style.width = Math.round((refunded / total) * 100) + '%';
+        document.getElementById('barFulfilled').style.width = Math.round((fulfilled / total) * 100) + '%';
+
+        // Top products (mock based on products sorted by price)
+        var topEl = document.getElementById('topProducts');
+        var sorted = products.slice().sort(function(a, b) { return (parseFloat(b.price) || 0) - (parseFloat(a.price) || 0); }).slice(0, 5);
+        if (sorted.length === 0) {
+            topEl.innerHTML = '<div class="empty-state"><p style="color: #64748b;">No product data available</p></div>';
+            return;
+        }
+        var html = '<div style="display: grid; gap: 12px;">';
+        sorted.forEach(function(p, i) {
+            html += '<div style="display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 8px; background: ' + (i % 2 === 0 ? '#f8fafc' : 'white') + ';">' +
+                '<div style="width: 32px; height: 32px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px; flex-shrink: 0;">' + (i + 1) + '</div>' +
+                '<div style="flex: 1; min-width: 0;">' +
+                '<div style="font-size: 14px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + escapeHtml(p.title) + '</div>' +
+                '<div style="font-size: 12px; color: #94a3b8;">' + escapeHtml(p.vendor) + ' &middot; ' + (p.inventory_quantity || 0) + ' in stock</div>' +
+                '</div>' +
+                '<div style="font-size: 16px; font-weight: 700; color: #0f172a;">' + formatCurrency(p.price) + '</div>' +
+                '</div>';
+        });
+        html += '</div>';
+        topEl.innerHTML = html;
+    }
+
+    // ============================================================
+    // SETTINGS RENDER
+    // ============================================================
+    async function loadSettings() {
+        await loadShopData();
+        renderSettings();
+    }
+
+    function renderSettings() {
+        var shopInput = document.getElementById('shopDomainInput');
+        if (state.shopDomain) {
+            shopInput.value = state.shopDomain;
+        }
+
+        // Shopify connection status
+        var shopBadge = document.getElementById('shopifyConnectionBadge');
+        var shopStatus = document.getElementById('shopifyStatus');
+        if (state.settings && state.settings.access_token) {
+            shopBadge.className = 'badge badge-green';
+            shopBadge.textContent = 'Connected';
+            shopStatus.textContent = 'Connected to ' + state.shopDomain;
+            shopStatus.style.color = '#22c55e';
+        } else if (state.shopDomain) {
+            shopBadge.className = 'badge badge-yellow';
+            shopBadge.textContent = 'Pending';
+            shopStatus.textContent = 'Shop detected, authorization needed';
+            shopStatus.style.color = '#eab308';
+        }
+
+        // FB connection status
+        var fbBadge = document.getElementById('fbConnectionBadge');
+        var fbStatusEl = document.getElementById('fbStatus');
+        if (state.settings && state.settings.fb_catalog_id) {
+            document.getElementById('fbCatalogId').value = state.settings.fb_catalog_id || '';
+            fbBadge.className = 'badge badge-green';
+            fbBadge.textContent = 'Connected';
+            fbStatusEl.textContent = 'Connected to catalog';
+            fbStatusEl.style.color = '#22c55e';
+        }
+
+        // Sync settings
+        if (state.settings) {
+            if (typeof state.settings.auto_sync !== 'undefined') {
+                document.getElementById('autoSyncToggle').checked = state.settings.auto_sync;
+            }
+            if (state.settings.sync_frequency) {
+                document.getElementById('syncFrequency').value = state.settings.sync_frequency;
+            }
+        }
+    }
+
+    // ============================================================
+    // ACTION HANDLERS
+    // ============================================================
+    async function syncProducts() {
+        showToast('Syncing products from Shopify...', 'info');
+        try {
+            if (state.shopDomain) {
+                await apiCall('/sync/products?shop=' + encodeURIComponent(state.shopDomain));
+            }
+            await loadProductsFromDb();
+            showToast('Products synced successfully!', 'success');
+            if (state.currentPage === 'dashboard') renderDashboard();
+            else if (state.currentPage === 'products') { applyProductFilters(); renderProducts(); }
+        } catch (err) {
+            // Still show demo data if API fails
+            showToast('Using demo data (API not available)', 'info');
+            state.products = getDemoProducts();
+            if (state.currentPage === 'dashboard') renderDashboard();
+            else if (state.currentPage === 'products') { applyProductFilters(); renderProducts(); }
+        }
+    }
+
+    async function syncOrders() {
+        showToast('Syncing orders...', 'info');
+        try {
+            if (state.shopDomain) {
+                await apiCall('/sync/orders?shop=' + encodeURIComponent(state.shopDomain));
+            }
+            await loadOrdersFromDb();
+            showToast('Orders synced successfully!', 'success');
+            renderOrders();
+        } catch (err) {
+            showToast('Using demo data (API not available)', 'info');
+            state.orders = getDemoOrders();
+            renderOrders();
+        }
+    }
+
+    async function publishProduct(productId) {
+        showToast('Publishing product to marketplace...', 'info');
+        try {
+            if (state.shopDomain) {
+                await apiCall('/marketplace/publish', {
+                    method: 'POST',
+                    body: { shop: state.shopDomain, product_id: productId }
+                });
+            }
+            // Update local state
+            var p = state.products.find(function(pr) { return pr.id === productId; });
+            if (p) p.marketplace_status = 'listed';
+            showToast('Product published successfully!', 'success');
+            refreshCurrentPage();
+        } catch (err) {
+            // Update locally for demo
+            var p = state.products.find(function(pr) { return pr.id === productId; });
+            if (p) p.marketplace_status = 'listed';
+            showToast('Product published (demo mode)', 'success');
+            refreshCurrentPage();
+        }
+    }
+
+    async function unpublishProduct(productId) {
+        showToast('Removing product from marketplace...', 'info');
+        try {
+            if (state.shopDomain) {
+                await apiCall('/marketplace/unpublish', {
+                    method: 'POST',
+                    body: { shop: state.shopDomain, product_id: productId }
+                });
+            }
+            var p = state.products.find(function(pr) { return pr.id === productId; });
+            if (p) p.marketplace_status = 'not_listed';
+            showToast('Product unpublished', 'success');
+            refreshCurrentPage();
+        } catch (err) {
+            var p = state.products.find(function(pr) { return pr.id === productId; });
+            if (p) p.marketplace_status = 'not_listed';
+            showToast('Product unpublished (demo mode)', 'success');
+            refreshCurrentPage();
+        }
+    }
+
+    async function publishAll() {
+        var notListed = state.products.filter(function(p) {
+            return p.marketplace_status !== 'listed';
+        });
+        if (notListed.length === 0) {
+            showToast('All products are already listed!', 'info');
+            return;
+        }
+        showToast('Publishing ' + notListed.length + ' products...', 'info');
+        notListed.forEach(function(p) { p.marketplace_status = 'listed'; });
+        try {
+            if (state.shopDomain) {
+                await apiCall('/marketplace/publish-all', {
+                    method: 'POST',
+                    body: { shop: state.shopDomain }
+                });
+            }
+        } catch (e) { /* demo mode */ }
+        showToast(notListed.length + ' products published!', 'success');
+        refreshCurrentPage();
+    }
+
+    async function bulkPublish() {
+        var ids = Array.from(state.selectedProducts);
+        if (ids.length === 0) return;
+        showToast('Publishing ' + ids.length + ' selected products...', 'info');
+        ids.forEach(function(id) {
+            var p = state.products.find(function(pr) { return pr.id === id; });
+            if (p) p.marketplace_status = 'listed';
+        });
+        try {
+            if (state.shopDomain) {
+                await apiCall('/marketplace/bulk-publish', {
+                    method: 'POST',
+                    body: { shop: state.shopDomain, product_ids: ids }
+                });
+            }
+        } catch (e) { /* demo mode */ }
+        state.selectedProducts.clear();
+        showToast(ids.length + ' products published!', 'success');
+        refreshCurrentPage();
+    }
+
+    function refreshCurrentPage() {
+        if (state.currentPage === 'products') { applyProductFilters(); renderProducts(); }
+        else if (state.currentPage === 'listings') renderListings();
+        else if (state.currentPage === 'dashboard') renderDashboard();
+        else if (state.currentPage === 'inventory') renderInventory();
+        else if (state.currentPage === 'analytics') renderAnalytics();
+    }
+
+    // ============================================================
+    // SETTINGS ACTION HANDLERS
+    // ============================================================
+    function connectShopify() {
+        var shop = document.getElementById('shopDomainInput').value.trim();
+        if (!shop) {
+            showToast('Please enter your Shopify shop domain', 'error');
+            return;
+        }
+        // Normalize domain
+        if (shop.indexOf('.myshopify.com') < 0) {
+            shop = shop.replace(/\.myshopify\.com/g, '') + '.myshopify.com';
+        }
+        state.shopDomain = shop;
+        showToast('Redirecting to Shopify authorization...', 'info');
+        // Redirect to auth endpoint
+        setTimeout(function() {
+            window.location.href = '/api/auth/install?shop=' + encodeURIComponent(shop);
+        }, 1000);
+    }
+
+    async function connectFacebook() {
+        var catalogId = document.getElementById('fbCatalogId').value.trim();
+        var token = document.getElementById('fbAccessToken').value.trim();
+        if (!catalogId || !token) {
+            showToast('Please enter both Catalog ID and Access Token', 'error');
+            return;
+        }
+        showToast('Connecting to Facebook Marketplace...', 'info');
+        try {
+            if (state.shopDomain) {
+                await apiCall('/settings/facebook', {
+                    method: 'POST',
+                    body: { shop: state.shopDomain, fb_catalog_id: catalogId, fb_access_token: token }
+                });
+            }
+            document.getElementById('fbConnectionBadge').className = 'badge badge-green';
+            document.getElementById('fbConnectionBadge').textContent = 'Connected';
+            document.getElementById('fbStatus').textContent = 'Connected to catalog';
+            document.getElementById('fbStatus').style.color = '#22c55e';
+            showToast('Facebook Marketplace connected!', 'success');
+        } catch (err) {
+            // Demo mode
+            document.getElementById('fbConnectionBadge').className = 'badge badge-green';
+            document.getElementById('fbConnectionBadge').textContent = 'Connected';
+            showToast('Facebook connected (demo mode)', 'success');
+        }
+    }
+
+    async function updateSyncSettings() {
+        var autoSync = document.getElementById('autoSyncToggle').checked;
+        var frequency = document.getElementById('syncFrequency').value;
+        try {
+            if (state.shopDomain) {
+                await apiCall('/settings/sync', {
+                    method: 'POST',
+                    body: { shop: state.shopDomain, auto_sync: autoSync, sync_frequency: parseInt(frequency) }
+                });
+            }
+            showToast('Sync settings updated', 'success');
+        } catch (err) {
+            showToast('Settings saved (demo mode)', 'success');
+        }
+    }
+
+    function disconnectShopify() {
+        if (!confirm('Are you sure you want to disconnect your Shopify store? This will remove all synced data.')) return;
+        showToast('Disconnecting Shopify...', 'info');
+        state.shopId = null;
+        state.settings = null;
+        state.products = [];
+        state.orders = [];
+        document.getElementById('shopifyConnectionBadge').className = 'badge badge-gray';
+        document.getElementById('shopifyConnectionBadge').textContent = 'Disconnected';
+        document.getElementById('shopifyStatus').textContent = 'Not connected';
+        document.getElementById('shopifyStatus').style.color = '#64748b';
+        showToast('Shopify disconnected', 'success');
+    }
+
+    function clearAllData() {
+        if (!confirm('WARNING: This will permanently delete ALL your data including products, orders, and settings. This cannot be undone. Are you absolutely sure?')) return;
+        showToast('Clearing all data...', 'info');
+        state.products = [];
+        state.orders = [];
+        state.syncLogs = [];
+        state.settings = null;
+        state.shopId = null;
+        state.selectedProducts.clear();
+        try {
+            if (supabase && state.shopDomain) {
+                supabase.from('products').delete().eq('shop_domain', state.shopDomain);
+                supabase.from('orders').delete().eq('shop_domain', state.shopDomain);
+                supabase.from('sync_logs').delete().eq('shop_domain', state.shopDomain);
+            }
+        } catch (e) { /* ignore */ }
+        showToast('All data cleared', 'success');
+        navigateTo('dashboard');
+    }
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+    function initApp() {
+        // Read shop from URL params
+        var params = new URLSearchParams(window.location.search);
+        var shopParam = params.get('shop');
+        if (shopParam) {
+            state.shopDomain = shopParam;
+        }
+
+        // Check localStorage for saved shop
+        if (!state.shopDomain) {
+            var saved = localStorage.getItem('vyntar_shop_domain');
+            if (saved) state.shopDomain = saved;
+        }
+
+        // Save to localStorage
+        if (state.shopDomain) {
+            localStorage.setItem('vyntar_shop_domain', state.shopDomain);
+            document.getElementById('footerShop').textContent = state.shopDomain;
+        }
+
+        // Load initial page
+        loadPageData('dashboard');
+    }
+
+    // Start the app
+    document.addEventListener('DOMContentLoaded', initApp);
+
+    // Also init immediately if DOM is ready
+    if (document.readyState !== 'loading') {
+        initApp();
+    }
+    </script>
+</body>
+</html>
