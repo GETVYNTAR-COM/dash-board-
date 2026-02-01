@@ -69,7 +69,7 @@ export default function ReportsPage() {
     setGeneratedReport(null);
 
     try {
-      const res = await fetch('/local-seo/api/ai/generate-report', {
+      const res = await fetch('/api/ai/generate-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId: selectedClient, reportType }),

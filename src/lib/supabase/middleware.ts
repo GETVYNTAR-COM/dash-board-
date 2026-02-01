@@ -35,15 +35,15 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   // Protect dashboard routes
-  if (request.nextUrl.pathname.startsWith('/local-seo/dashboard') && !user) {
-    const loginUrl = new URL('/local-seo/auth/login', request.url);
+  if (request.nextUrl.pathname.startsWith('/dashboard') && !user) {
+    const loginUrl = new URL('/auth/login', request.url);
     loginUrl.searchParams.set('redirect', request.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);
   }
 
   // Redirect logged-in users away from auth pages
-  if (request.nextUrl.pathname.startsWith('/local-seo/auth') && user) {
-    return NextResponse.redirect(new URL('/local-seo/dashboard', request.url));
+  if (request.nextUrl.pathname.startsWith('/auth') && user) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
   return response;

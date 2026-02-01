@@ -6,5 +6,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/local-seo/dashboard/:path*', '/local-seo/auth/:path*'],
+  matcher: ['/dashboard/:path*', '/auth/:path*'],
 };
