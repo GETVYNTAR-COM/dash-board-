@@ -1,9 +1,12 @@
 {
-  "name": "vyntar-dashboard-tests",
-  "version": "1.0.0",
+  "name": "vyntar-marketplace-app",
+  "version": "2.0.0",
   "private": true,
-  "description": "Test suite for VYNTAR Marketplace Dashboard",
+  "description": "VYNTAR Shopify Marketplace App - Sell on Facebook Marketplace via Shopify",
   "scripts": {
     "test": "node --test tests/dashboard.test.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
