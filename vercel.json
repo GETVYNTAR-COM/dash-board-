@@ -1,9 +1,10 @@
 {
-  "buildCommand": "",
+  "buildCommand": "cd vyntar-local-seo && npm install && npm run build",
   "outputDirectory": ".",
   "framework": null,
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/local-seo/:path*", "destination": "/vyntar-local-seo/:path*" },
+    { "source": "/((?!local-seo).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
