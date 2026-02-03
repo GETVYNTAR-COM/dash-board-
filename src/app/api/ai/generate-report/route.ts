@@ -10,6 +10,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'clientId and reportType are required' }, { status: 400 });
     }
 
+    // Debug logging
+    console.log('=== Generate Report Debug ===');
+    console.log('Received clientId:', clientId);
+    console.log('clientId type:', typeof clientId);
+    console.log('reportType:', reportType);
+
     const supabase = createServiceRoleClient();
 
     // Get client details
@@ -19,8 +25,21 @@ export async function POST(request: NextRequest) {
       .eq('id', clientId)
       .single();
 
+    // Debug logging for query result
+    console.log('Query result - client:', client);
+    console.log('Query result - error:', clientError);
+
     if (clientError || !client) {
-      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+      console.error('Client lookup failed:', { clientId, clientError });
+      return NextResponse.json({
+        error: 'Client not found',
+        debug: {
+          receivedClientId: clientId,
+          clientIdType: typeof clientId,
+          queryError: clientError?.message,
+          queryCode: clientError?.code
+        }
+      }, { status: 404 });
     }
 
     // Get citations with directory info
