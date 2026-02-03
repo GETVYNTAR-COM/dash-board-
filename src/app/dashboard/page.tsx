@@ -54,10 +54,14 @@ export default function DashboardPage() {
         // Get citations
         let citations: { id: string; status: string; client_id: string; submitted_at: string | null; live_at: string | null }[] = [];
         if (clientIds.length > 0) {
-          const { data } = await supabase
+          const { data, error: citationsError } = await supabase
             .from('citations')
             .select('id, status, client_id, submitted_at, live_at')
             .in('client_id', clientIds);
+
+          if (citationsError) {
+            console.error('Citations query error:', citationsError);
+          }
           citations = data || [];
         }
 
