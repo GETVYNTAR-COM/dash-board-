@@ -10,7 +10,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'clientId and reportType are required' }, { status: 400 });
     }
 
+    // Debug logging
+    console.log('=== Generate Report Debug ===');
+    console.log('Received clientId:', clientId);
+    console.log('clientId type:', typeof clientId);
+    console.log('reportType:', reportType);
+    console.log('SUPABASE_SERVICE_ROLE_KEY set:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+    console.log('NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+
     const supabase = createServiceRoleClient();
+
+    // First, list all clients to verify database connection and bypass RLS
+    const { data: allClients, error: listError } = await supabase
+      .from('clients')
+      .select('id, business_name')
+      .limit(10);
+
+    console.log('All clients (first 10):', allClients);
+    console.log('List error:', listError);
 
     // Get client details
     const { data: client, error: clientError } = await supabase
@@ -19,8 +36,26 @@ export async function POST(request: NextRequest) {
       .eq('id', clientId)
       .single();
 
+    // Debug logging for query result
+    console.log('Query result - client:', client);
+    console.log('Query result - error:', clientError);
+
     if (clientError || !client) {
-      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+      console.error('Client lookup failed:', { clientId, clientError });
+      return NextResponse.json({
+        error: 'Client not found',
+        debug: {
+          receivedClientId: clientId,
+          clientIdType: typeof clientId,
+          queryError: clientError?.message,
+          queryCode: clientError?.code,
+          hint: clientError?.hint,
+          details: clientError?.details,
+          allClientsCount: allClients?.length || 0,
+          allClientIds: allClients?.map(c => c.id) || [],
+          serviceRoleKeySet: !!process.env.SUPABASE_SERVICE_ROLE_KEY
+        }
+      }, { status: 404 });
     }
 
     // Get citations with directory info

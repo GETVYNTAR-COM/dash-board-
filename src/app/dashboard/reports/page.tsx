@@ -77,7 +77,11 @@ export default function ReportsPage() {
 
       const data = await res.json();
       if (data.error) {
-        alert(data.error);
+        // Show debug info to help diagnose issues
+        const debugInfo = data.debug
+          ? `\n\nDebug:\n- Service Role Key Set: ${data.debug.serviceRoleKeySet}\n- Clients found: ${data.debug.allClientsCount}\n- Error: ${data.debug.queryError || 'none'}`
+          : '';
+        alert(data.error + debugInfo);
       } else {
         setGeneratedReport(data.summary);
         // Reload reports

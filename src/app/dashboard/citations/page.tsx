@@ -44,17 +44,42 @@ export default function CitationsPage() {
           return;
         }
 
-        const { data } = await supabase
+        const { data, error: citationsError } = await supabase
           .from('citations')
           .select(`
-            id, status, nap_consistent, submitted_at, live_at,
-            client:clients(business_name),
-            directory:directories(name, url, tier)
+            id, status, nap_consistent, submitted_at, live_at, client_id, directory_id
           `)
           .in('client_id', clientIds)
           .order('created_at', { ascending: false });
 
-        setCitations((data as unknown as CitationWithDetails[]) || []);
+        if (citationsError) {
+          console.error('Citations query error:', citationsError);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch client and directory details separately to avoid join issues
+        const { data: allClients } = await supabase
+          .from('clients')
+          .select('id, business_name')
+          .in('id', clientIds);
+
+        const directoryIds = Array.from(new Set((data || []).map(c => c.directory_id).filter(Boolean)));
+        const { data: directories } = directoryIds.length > 0
+          ? await supabase.from('directories').select('id, name, url, tier').in('id', directoryIds)
+          : { data: [] };
+
+        // Map the data together
+        const clientMap = new Map((allClients || []).map(c => [c.id, c]));
+        const directoryMap = new Map((directories || []).map(d => [d.id, d]));
+
+        const enrichedData = (data || []).map(citation => ({
+          ...citation,
+          client: clientMap.get(citation.client_id) || null,
+          directory: directoryMap.get(citation.directory_id) || null,
+        }));
+
+        setCitations(enrichedData as unknown as CitationWithDetails[]);
       } catch (err) {
         console.error('Failed to load citations:', err);
       } finally {
