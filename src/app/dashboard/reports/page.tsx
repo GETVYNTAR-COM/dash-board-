@@ -20,6 +20,8 @@ export default function ReportsPage() {
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generatedReport, setGeneratedReport] = useState<string | null>(null);
+  const [expandedReports, setExpandedReports] = useState<Set<string>>(new Set());
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -105,6 +107,28 @@ export default function ReportsPage() {
     }
   }
 
+  function toggleExpanded(reportId: string) {
+    setExpandedReports((prev) => {
+      const next = new Set(prev);
+      if (next.has(reportId)) {
+        next.delete(reportId);
+      } else {
+        next.add(reportId);
+      }
+      return next;
+    });
+  }
+
+  async function copyToClipboard(text: string, reportId: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(reportId);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }
+
   const typeLabels: Record<string, string> = {
     citation_audit: 'Citation Audit',
     competitor_analysis: 'Competitor Analysis',
@@ -168,7 +192,29 @@ export default function ReportsPage() {
 
         {generatedReport && (
           <div className="rounded-lg bg-gray-800/50 border border-gray-700 p-4">
-            <h4 className="text-sm font-medium text-brand-400 mb-2">Generated Report</h4>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-medium text-brand-400">Generated Report</h4>
+              <button
+                onClick={() => copyToClipboard(generatedReport, 'generated')}
+                className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
+              >
+                {copiedId === 'generated' ? (
+                  <>
+                    <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-emerald-400">Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Copy
+                  </>
+                )}
+              </button>
+            </div>
             <p className="text-sm text-gray-300 whitespace-pre-wrap">{generatedReport}</p>
           </div>
         )}
@@ -181,21 +227,72 @@ export default function ReportsPage() {
           <p className="text-sm text-gray-500">No reports generated yet.</p>
         ) : (
           <div className="space-y-3">
-            {reports.map((report) => (
-              <div key={report.id} className="rounded-lg bg-gray-800/50 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-medium text-white">{report.client?.business_name}</span>
-                    <span className="mx-2 text-gray-600">-</span>
-                    <span className="text-sm text-gray-400">{typeLabels[report.report_type] || report.report_type}</span>
-                  </div>
-                  <span className="text-xs text-gray-500">
-                    {new Date(report.created_at).toLocaleDateString('en-GB')}
-                  </span>
+            {reports.map((report) => {
+              const isExpanded = expandedReports.has(report.id);
+              return (
+                <div key={report.id} className="rounded-lg bg-gray-800/50 border border-gray-700/50 overflow-hidden">
+                  <button
+                    onClick={() => toggleExpanded(report.id)}
+                    className="w-full px-4 py-3 text-left transition-colors hover:bg-gray-800/80"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <svg
+                          className={`h-4 w-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                        <div>
+                          <span className="text-sm font-medium text-white">{report.client?.business_name}</span>
+                          <span className="mx-2 text-gray-600">-</span>
+                          <span className="text-sm text-gray-400">{typeLabels[report.report_type] || report.report_type}</span>
+                        </div>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {new Date(report.created_at).toLocaleDateString('en-GB')}
+                      </span>
+                    </div>
+                    {!isExpanded && (
+                      <p className="mt-1 ml-7 text-sm text-gray-400 line-clamp-2">{report.summary}</p>
+                    )}
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-700/50 px-4 py-3 bg-gray-900/30">
+                      <div className="flex justify-end mb-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(report.summary, report.id);
+                          }}
+                          className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
+                        >
+                          {copiedId === report.id ? (
+                            <>
+                              <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span className="text-emerald-400">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              Copy to clipboard
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-sm text-gray-300 whitespace-pre-wrap">{report.summary}</p>
+                    </div>
+                  )}
                 </div>
-                <p className="mt-1 text-sm text-gray-400 line-clamp-2">{report.summary}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
