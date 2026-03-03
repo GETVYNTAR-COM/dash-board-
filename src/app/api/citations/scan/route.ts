@@ -92,14 +92,24 @@ async function checkDirectoryListing(
   businessName: string,
   directoryDomain: string,
   apiKey: string,
-  searchEngineId: string
+  searchEngineId: string,
+  debugLog: boolean = false
 ): Promise<{ found: boolean; url?: string; titleMatch: number }> {
   try {
     const query = encodeURIComponent(`"${businessName}" site:${directoryDomain}`);
     const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${query}&num=3`;
 
+    if (debugLog) {
+      console.log(`[DEBUG] Checking directory: ${directoryDomain}`);
+      console.log(`[DEBUG] Search query: "${businessName}" site:${directoryDomain}`);
+    }
+
     const response = await fetch(url);
     const data: GoogleCustomSearchResponse = await response.json();
+
+    if (debugLog) {
+      console.log(`[DEBUG] Google Custom Search response for ${directoryDomain}:`, JSON.stringify(data, null, 2));
+    }
 
     if (data.error) {
       console.error(`Google Custom Search error for ${directoryDomain}:`, data.error.message);
@@ -150,6 +160,7 @@ async function detectExistingListings(
   searchEngineId: string
 ): Promise<Map<string, { found: boolean; url?: string; nameMatch: number }>> {
   const results = new Map<string, { found: boolean; url?: string; nameMatch: number }>();
+  let checkedCount = 0;
 
   for (const directory of directories) {
     // Get domain from directory or use UK_DIRECTORY_DOMAINS mapping
@@ -171,8 +182,10 @@ async function detectExistingListings(
       continue;
     }
 
-    // Check if business exists on this directory
-    const result = await checkDirectoryListing(businessName, domain, apiKey, searchEngineId);
+    // Check if business exists on this directory (debug log first 3)
+    const shouldDebugLog = checkedCount < 3;
+    checkedCount++;
+    const result = await checkDirectoryListing(businessName, domain, apiKey, searchEngineId, shouldDebugLog);
     results.set(directory.id, {
       found: result.found,
       url: result.url,
@@ -437,6 +450,14 @@ export async function POST(request: NextRequest) {
     const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
     let detectionResults: Map<string, { found: boolean; url?: string; nameMatch: number }> = new Map();
     let listingsDetected = 0;
+
+    // Debug: Log API key presence
+    console.log('[DEBUG] Environment variables check:');
+    console.log(`[DEBUG]   GOOGLE_SEARCH_API_KEY present: ${!!process.env.GOOGLE_SEARCH_API_KEY}`);
+    console.log(`[DEBUG]   GOOGLE_SEARCH_ENGINE_ID present: ${!!process.env.GOOGLE_SEARCH_ENGINE_ID}`);
+    console.log(`[DEBUG]   GOOGLE_PLACES_API_KEY present: ${!!process.env.GOOGLE_PLACES_API_KEY}`);
+    console.log(`[DEBUG]   Using API key: ${googleSearchApiKey ? 'yes (length: ' + googleSearchApiKey.length + ')' : 'no'}`);
+    console.log(`[DEBUG]   Using Search Engine ID: ${googleSearchEngineId ? 'yes (value: ' + googleSearchEngineId + ')' : 'no'}`);
 
     if (googleSearchApiKey && googleSearchEngineId) {
       console.log(`Starting directory detection for ${client.business_name}...`);
