@@ -432,6 +432,71 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Detect existing listings on directories using Google Custom Search
+    const googleSearchApiKey = process.env.GOOGLE_SEARCH_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
+    const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
+    let detectionResults: Map<string, { found: boolean; url?: string; nameMatch: number }> = new Map();
+    let listingsDetected = 0;
+
+    if (googleSearchApiKey && googleSearchEngineId) {
+      console.log(`Starting directory detection for ${client.business_name}...`);
+
+      // Get all citations for this client with their directory info
+      const { data: citationsWithDirs } = await supabase
+        .from('citations')
+        .select('id, directory_id, status, directories(id, name, domain)')
+        .eq('client_id', clientId)
+        .eq('status', 'pending');
+
+      if (citationsWithDirs && citationsWithDirs.length > 0) {
+        // Prepare directories for detection (only pending citations)
+        const directoriesToCheck = citationsWithDirs
+          .filter((c: any) => c.directories)
+          .map((c: any) => ({
+            id: c.directories.id,
+            name: c.directories.name,
+            domain: c.directories.domain,
+            citationId: c.id,
+          }));
+
+        // Detect listings (rate-limited)
+        detectionResults = await detectExistingListings(
+          client.business_name,
+          directoriesToCheck,
+          googleSearchApiKey,
+          googleSearchEngineId
+        );
+
+        // Update citations that were found to 'live' status
+        for (const citation of citationsWithDirs) {
+          const dirId = (citation as any).directories?.id;
+          if (!dirId) continue;
+
+          const detection = detectionResults.get(dirId);
+          if (detection?.found) {
+            listingsDetected++;
+            const { error: updateCitationError } = await supabase
+              .from('citations')
+              .update({
+                status: 'live',
+                listing_url: detection.url,
+                nap_consistent: detection.nameMatch >= 70,
+                verified_at: new Date().toISOString(),
+              })
+              .eq('id', citation.id);
+
+            if (updateCitationError) {
+              console.error(`Failed to update citation ${citation.id}:`, updateCitationError);
+            }
+          }
+        }
+
+        console.log(`Directory detection complete: ${listingsDetected} listings found`);
+      }
+    } else {
+      console.log('Google Custom Search not configured - skipping directory detection');
+    }
+
     // Calculate citation score based on live citations
     const { data: allCitations } = await supabase
       .from('citations')
@@ -507,6 +572,11 @@ export async function POST(request: NextRequest) {
         new_citations_created: insertedCount,
         live_citations: liveCitations,
         coverage_percentage: directoryCount > 0 ? Math.round((liveCitations / directoryCount) * 100) : 0,
+      },
+      directory_detection: {
+        enabled: !!(googleSearchApiKey && googleSearchEngineId),
+        listings_detected: listingsDetected,
+        directories_checked: detectionResults.size,
       },
       scan_timestamp: new Date().toISOString(),
     });
