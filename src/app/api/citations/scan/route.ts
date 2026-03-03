@@ -47,6 +47,145 @@ interface GooglePlaceDetails {
   status: string;
 }
 
+interface GoogleCustomSearchResponse {
+  items?: Array<{
+    title: string;
+    link: string;
+    snippet: string;
+    displayLink: string;
+  }>;
+  searchInformation?: {
+    totalResults: string;
+  };
+  error?: {
+    code: number;
+    message: string;
+  };
+}
+
+// Top 15 UK directories with their domains for detection
+const UK_DIRECTORY_DOMAINS: Record<string, string> = {
+  'google.com': 'google.com',
+  'yell.com': 'yell.com',
+  'thomsonlocal.com': 'thomsonlocal.com',
+  'checkatrade.com': 'checkatrade.com',
+  'trustpilot.com': 'trustpilot.com',
+  'freeindex.co.uk': 'freeindex.co.uk',
+  'cylex-uk.co.uk': 'cylex-uk.co.uk',
+  'hotfrog.co.uk': 'hotfrog.co.uk',
+  'yelp.co.uk': 'yelp.co.uk',
+  '192.com': '192.com',
+  'bark.com': 'bark.com',
+  'mybuilder.com': 'mybuilder.com',
+  'ratedpeople.com': 'ratedpeople.com',
+  'trustatrader.com': 'trustatrader.com',
+  'scoot.co.uk': 'scoot.co.uk',
+};
+
+// Rate limiting helper - sleep for specified ms
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Check if a business exists on a directory using Google Custom Search
+async function checkDirectoryListing(
+  businessName: string,
+  directoryDomain: string,
+  apiKey: string,
+  searchEngineId: string
+): Promise<{ found: boolean; url?: string; titleMatch: number }> {
+  try {
+    const query = encodeURIComponent(`"${businessName}" site:${directoryDomain}`);
+    const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${query}&num=3`;
+
+    const response = await fetch(url);
+    const data: GoogleCustomSearchResponse = await response.json();
+
+    if (data.error) {
+      console.error(`Google Custom Search error for ${directoryDomain}:`, data.error.message);
+      return { found: false, titleMatch: 0 };
+    }
+
+    if (data.items && data.items.length > 0) {
+      // Check if any result title contains the business name
+      const normalisedBusinessName = businessName.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      for (const item of data.items) {
+        const normalisedTitle = item.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const normalisedSnippet = item.snippet.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        // Calculate match score
+        let titleMatch = 0;
+        if (normalisedTitle.includes(normalisedBusinessName) || normalisedBusinessName.includes(normalisedTitle)) {
+          titleMatch = 90;
+        } else if (normalisedSnippet.includes(normalisedBusinessName)) {
+          titleMatch = 70;
+        } else {
+          // Partial word match
+          const businessWords = businessName.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+          const matchingWords = businessWords.filter(
+            (word) => normalisedTitle.includes(word) || normalisedSnippet.includes(word)
+          );
+          titleMatch = businessWords.length > 0 ? Math.round((matchingWords.length / businessWords.length) * 80) : 0;
+        }
+
+        if (titleMatch >= 50) {
+          return { found: true, url: item.link, titleMatch };
+        }
+      }
+    }
+
+    return { found: false, titleMatch: 0 };
+  } catch (error) {
+    console.error(`Error checking ${directoryDomain}:`, error);
+    return { found: false, titleMatch: 0 };
+  }
+}
+
+// Detect existing listings across directories
+async function detectExistingListings(
+  businessName: string,
+  directories: Array<{ id: string; name: string; domain?: string }>,
+  apiKey: string,
+  searchEngineId: string
+): Promise<Map<string, { found: boolean; url?: string; nameMatch: number }>> {
+  const results = new Map<string, { found: boolean; url?: string; nameMatch: number }>();
+
+  for (const directory of directories) {
+    // Get domain from directory or use UK_DIRECTORY_DOMAINS mapping
+    const directoryNameLower = directory.name.toLowerCase();
+    let domain = directory.domain;
+
+    if (!domain) {
+      // Try to match directory name to known domains
+      for (const [key, value] of Object.entries(UK_DIRECTORY_DOMAINS)) {
+        if (directoryNameLower.includes(key.replace('.com', '').replace('.co.uk', ''))) {
+          domain = value;
+          break;
+        }
+      }
+    }
+
+    if (!domain) {
+      // Skip directories without a known domain
+      continue;
+    }
+
+    // Check if business exists on this directory
+    const result = await checkDirectoryListing(businessName, domain, apiKey, searchEngineId);
+    results.set(directory.id, {
+      found: result.found,
+      url: result.url,
+      nameMatch: result.titleMatch,
+    });
+
+    // Rate limit: 1 request per second
+    await sleep(1000);
+  }
+
+  return results;
+}
+
 // Normalise phone numbers for comparison (UK format)
 function normalisePhone(phone: string | null | undefined): string {
   if (!phone) return '';
