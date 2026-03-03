@@ -120,12 +120,17 @@ export default function ClientsPage() {
           <h1 className="text-2xl font-bold text-white">Clients</h1>
           <p className="mt-1 text-sm text-gray-400">{clients.length} total clients</p>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="btn-primary"
-        >
-          {showForm ? 'Cancel' : '+ Add Client'}
-        </button>
+        <div className="flex items-center gap-3">
+          <a href="/dashboard/clients/import" className="btn-secondary">
+            📄 Import CSV
+          </a>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="btn-primary"
+          >
+            {showForm ? 'Cancel' : '+ Add Client'}
+          </button>
+        </div>
       </div>
 
       {/* Add Client Form */}
