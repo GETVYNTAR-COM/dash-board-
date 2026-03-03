@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Client } from '@/types/database';
 
@@ -19,6 +19,12 @@ export default function ClientsPage() {
     category: '',
     website: '',
   });
+
+  // Scan state
+  const [scanningClient, setScanningClient] = useState<string | null>(null);
+  const [bulkScanning, setBulkScanning] = useState(false);
+  const [bulkScanProgress, setBulkScanProgress] = useState({ current: 0, total: 0 });
+
   const supabase = createClient();
 
   useEffect(() => {
@@ -105,6 +111,70 @@ export default function ClientsPage() {
     return 'text-red-400 bg-red-400/10';
   };
 
+  // Scan a single client
+  const scanClient = useCallback(async (clientId: string): Promise<number | null> => {
+    try {
+      const response = await fetch('/api/citations/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Scan failed');
+      }
+
+      const data = await response.json();
+      return data.client?.citation_score ?? null;
+    } catch (err) {
+      console.error('Scan error:', err);
+      return null;
+    }
+  }, []);
+
+  // Handle single client scan
+  const handleScanClient = async (clientId: string) => {
+    setScanningClient(clientId);
+    const newScore = await scanClient(clientId);
+
+    if (newScore !== null) {
+      setClients(prev => prev.map(c =>
+        c.id === clientId ? { ...c, citation_score: newScore } : c
+      ));
+    }
+
+    setScanningClient(null);
+  };
+
+  // Handle bulk scan of all clients
+  const handleScanAll = async () => {
+    if (bulkScanning || clients.length === 0) return;
+
+    setBulkScanning(true);
+    setBulkScanProgress({ current: 0, total: clients.length });
+
+    for (let i = 0; i < clients.length; i++) {
+      const client = clients[i];
+      setBulkScanProgress({ current: i + 1, total: clients.length });
+
+      const newScore = await scanClient(client.id);
+
+      if (newScore !== null) {
+        setClients(prev => prev.map(c =>
+          c.id === client.id ? { ...c, citation_score: newScore } : c
+        ));
+      }
+
+      // Wait 2 seconds between scans to avoid rate limiting (except for last one)
+      if (i < clients.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    setBulkScanning(false);
+    setBulkScanProgress({ current: 0, total: 0 });
+  };
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -121,6 +191,20 @@ export default function ClientsPage() {
           <p className="mt-1 text-sm text-gray-400">{clients.length} total clients</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleScanAll}
+            disabled={bulkScanning || clients.length === 0}
+            className="btn-secondary disabled:opacity-50"
+          >
+            {bulkScanning ? (
+              <span className="flex items-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+                {bulkScanProgress.current}/{bulkScanProgress.total} scanned
+              </span>
+            ) : (
+              '🔍 Scan All'
+            )}
+          </button>
           <a href="/dashboard/clients/import" className="btn-secondary">
             📄 Import CSV
           </a>
@@ -258,6 +342,7 @@ export default function ClientsPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">Category</th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">Phone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">Citation Score</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
@@ -284,6 +369,22 @@ export default function ClientsPage() {
                     <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${getScoreColor(client.citation_score)}`}>
                       {client.citation_score}%
                     </span>
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4">
+                    <button
+                      onClick={() => handleScanClient(client.id)}
+                      disabled={scanningClient === client.id || bulkScanning}
+                      className="rounded-lg bg-brand-500/10 px-3 py-1.5 text-xs font-medium text-brand-400 hover:bg-brand-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {scanningClient === client.id ? (
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-400 border-t-transparent" />
+                          Scanning...
+                        </span>
+                      ) : (
+                        '🔍 Scan'
+                      )}
+                    </button>
                   </td>
                 </tr>
               ))}
