@@ -82,21 +82,38 @@ export async function POST(request: NextRequest) {
       monthly_report: 'Monthly Performance Report',
     };
 
+    // Format today's date
+    const today = new Date();
+    const reportDate = today.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+
     // Build prompt based on report type
     let prompt = `You are a UK local SEO expert writing a professional ${reportTypeLabels[reportType]} for an agency client.
 
-Business: ${client.business_name}
-Category: ${client.category}
-Location: ${client.city}, ${client.postcode}
-Address: ${client.address}
-Phone: ${client.phone}
-Citation Score: ${client.citation_score}%
+REPORT HEADER:
+Prepared by: VYNTAR Local SEO
+Report Date: ${reportDate}
+Report Type: ${reportTypeLabels[reportType]}
+
+CLIENT DETAILS:
+Business Name: ${client.business_name}
+Website: ${client.website || 'Not provided'}
+Category: ${client.category || 'Local Business'}
+City: ${client.city || 'Not specified'}
+Full Address: ${client.address || 'Not provided'}, ${client.city || ''}, ${client.postcode || ''}
+Phone: ${client.phone || 'Not provided'}
+Current Citation Score: ${client.citation_score || 0}%
 
 Citation Summary:
 - Live citations: ${liveCitations.length}
 - Pending/Submitted: ${pendingCitations.length}
 - Errors: ${errorCitations.length}
 - Total: ${allCitations.length}
+
+IMPORTANT: Do not use placeholder brackets like [Business Name] or [Date]. All fields above contain real data - use them directly in the report.
 `;
 
     if (reportType === 'citation_audit') {
