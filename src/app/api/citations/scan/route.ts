@@ -118,12 +118,12 @@ function similarityScore(str1: string, str2: string): number {
   if (maxLen === 0) return 100;
 
   // Simple character overlap for performance
-  const set1 = new Set(s1.split(''));
-  const set2 = new Set(s2.split(''));
-  const intersection = Array.from(set1).filter((char) => set2.has(char)).length;
-  const union = new Set(Array.from(set1).concat(Array.from(set2))).size;
+  const arr1 = s1.split('');
+  const arr2 = s2.split('');
+  const intersection = arr1.filter((char) => arr2.includes(char)).length;
+  const uniqueChars = new Set(arr1.concat(arr2));
 
-  return Math.round((intersection / union) * 100);
+  return Math.round((intersection / uniqueChars.size) * 100);
 }
 
 // Check NAP consistency between client data and Google Places data
