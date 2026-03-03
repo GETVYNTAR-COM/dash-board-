@@ -3,10 +3,10 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 
 interface ClientImport {
   business_name: string;
-  address: string;
-  city: string;
-  postcode: string;
-  phone: string;
+  address?: string;
+  city?: string;
+  postcode?: string;
+  phone?: string;
   category?: string;
   website?: string;
   email?: string;
@@ -43,18 +43,21 @@ function normalisePostcode(postcode: string): string {
 // Check if two clients are likely duplicates
 function isDuplicate(
   newClient: ClientImport,
-  existingClient: { business_name: string; postcode: string; phone?: string }
+  existingClient: { business_name: string; postcode?: string; phone?: string }
 ): boolean {
   const nameMatch =
     normaliseBusinessName(newClient.business_name) === normaliseBusinessName(existingClient.business_name);
-  const postcodeMatch = normalisePostcode(newClient.postcode) === normalisePostcode(existingClient.postcode || '');
 
-  // Same name and postcode = duplicate
-  if (nameMatch && postcodeMatch) {
-    return true;
+  // If postcodes are both provided, check for match
+  if (newClient.postcode && existingClient.postcode) {
+    const postcodeMatch = normalisePostcode(newClient.postcode) === normalisePostcode(existingClient.postcode);
+    // Same name and postcode = duplicate
+    if (nameMatch && postcodeMatch) {
+      return true;
+    }
   }
 
-  // Same phone number (if provided) = duplicate
+  // Same phone number (if both provided) = duplicate
   if (newClient.phone && existingClient.phone) {
     const newPhone = newClient.phone.replace(/\D/g, '');
     const existingPhone = existingClient.phone.replace(/\D/g, '');
@@ -63,31 +66,17 @@ function isDuplicate(
     }
   }
 
+  // If only name matches and no other identifying info, not a duplicate
+  // (could be different locations of same business)
   return false;
 }
 
-// Validate client data
+// Validate client data - only business_name is required
 function validateClient(client: ClientImport): string[] {
   const errors: string[] = [];
 
   if (!client.business_name || client.business_name.trim().length < 2) {
     errors.push('Business name is required (min 2 characters)');
-  }
-
-  if (!client.address || client.address.trim().length < 5) {
-    errors.push('Address is required (min 5 characters)');
-  }
-
-  if (!client.city || client.city.trim().length < 2) {
-    errors.push('City is required');
-  }
-
-  if (!client.postcode || client.postcode.trim().length < 5) {
-    errors.push('Valid UK postcode is required');
-  }
-
-  if (!client.phone || client.phone.replace(/\D/g, '').length < 10) {
-    errors.push('Valid phone number is required (min 10 digits)');
   }
 
   return errors;
@@ -199,7 +188,7 @@ export async function POST(request: NextRequest) {
 
       // Check for duplicates within the import batch
       const batchDuplicate = clientsToInsert.find((pending) =>
-        isDuplicate(client, { business_name: pending.business_name, postcode: pending.postcode, phone: pending.phone })
+        isDuplicate(client, { business_name: pending.business_name, postcode: pending.postcode || undefined, phone: pending.phone || undefined })
       );
       if (batchDuplicate) {
         results.push({
@@ -213,10 +202,10 @@ export async function POST(request: NextRequest) {
       // Prepare for insert
       clientsToInsert.push({
         business_name: client.business_name.trim(),
-        address: client.address.trim(),
-        city: client.city.trim(),
-        postcode: client.postcode.trim().toUpperCase(),
-        phone: client.phone.trim(),
+        address: client.address?.trim() || '',
+        city: client.city?.trim() || '',
+        postcode: client.postcode?.trim().toUpperCase() || '',
+        phone: client.phone?.trim() || '',
         category: client.category?.trim() || 'Local Business',
         website: client.website?.trim() || null,
         email: client.email?.trim() || null,
