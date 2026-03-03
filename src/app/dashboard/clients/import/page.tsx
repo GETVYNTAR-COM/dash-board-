@@ -6,10 +6,10 @@ import { createClient } from '@/lib/supabase/client';
 
 interface ParsedClient {
   business_name: string;
-  address: string;
-  city: string;
-  postcode: string;
-  phone: string;
+  address?: string;
+  city?: string;
+  postcode?: string;
+  phone?: string;
   category?: string;
   website?: string;
   email?: string;
@@ -158,8 +158,8 @@ function rowToClient(row: string[], headerMapping: Map<number, string>): ParsedC
     }
   });
 
-  // Validate required fields
-  if (!client.business_name || !client.address || !client.city || !client.postcode || !client.phone) {
+  // Validate required fields - only business_name is required
+  if (!client.business_name) {
     return null;
   }
 
@@ -202,14 +202,11 @@ export default function ImportClientsPage() {
 
         const headerMapping = mapHeaders(headers);
 
-        // Check required fields are mapped
+        // Check required fields are mapped - only business_name is required
         const mappedFields = new Set(headerMapping.values());
-        const requiredFields = ['business_name', 'address', 'city', 'postcode', 'phone'];
-        const missingFields = requiredFields.filter((f) => !mappedFields.has(f));
-
-        if (missingFields.length > 0) {
+        if (!mappedFields.has('business_name')) {
           setError(
-            `CSV is missing required columns: ${missingFields.join(', ')}. ` +
+            `CSV is missing required column: business_name. ` +
               `Found columns: ${headers.join(', ')}`
           );
           return;
@@ -497,7 +494,7 @@ export default function ImportClientsPage() {
               </p>
             </div>
             <p className="text-xs text-gray-500">
-              Required columns: business_name, address, city, postcode, phone
+              Required column: business_name
             </p>
           </div>
         </div>
@@ -605,16 +602,16 @@ export default function ImportClientsPage() {
                         {client.business_name}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
-                        {client.address}
+                        {client.address || '-'}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
-                        {client.city}
+                        {client.city || '-'}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
-                        {client.postcode}
+                        {client.postcode || '-'}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
-                        {client.phone}
+                        {client.phone || '-'}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-400">
                         {client.category || '-'}
@@ -657,16 +654,16 @@ export default function ImportClientsPage() {
                 <span className="text-emerald-400">*</span> business_name, company, name
               </div>
               <div className="rounded bg-gray-800/50 px-3 py-2">
-                <span className="text-emerald-400">*</span> address, street address
+                address, street address
               </div>
               <div className="rounded bg-gray-800/50 px-3 py-2">
-                <span className="text-emerald-400">*</span> city, town
+                city, town
               </div>
               <div className="rounded bg-gray-800/50 px-3 py-2">
-                <span className="text-emerald-400">*</span> postcode, postal code, zip
+                postcode, postal code, zip
               </div>
               <div className="rounded bg-gray-800/50 px-3 py-2">
-                <span className="text-emerald-400">*</span> phone, telephone, tel
+                phone, telephone, tel
               </div>
               <div className="rounded bg-gray-800/50 px-3 py-2">
                 category, type, industry
@@ -679,7 +676,7 @@ export default function ImportClientsPage() {
               </div>
             </div>
             <p className="text-xs text-gray-500">
-              <span className="text-emerald-400">*</span> Required fields
+              <span className="text-emerald-400">*</span> Required field
             </p>
           </div>
         </div>
