@@ -120,8 +120,8 @@ function similarityScore(str1: string, str2: string): number {
   // Simple character overlap for performance
   const set1 = new Set(s1.split(''));
   const set2 = new Set(s2.split(''));
-  const intersection = [...set1].filter((char) => set2.has(char)).length;
-  const union = new Set([...set1, ...set2]).size;
+  const intersection = Array.from(set1).filter((char) => set2.has(char)).length;
+  const union = new Set(Array.from(set1).concat(Array.from(set2))).size;
 
   return Math.round((intersection / union) * 100);
 }
