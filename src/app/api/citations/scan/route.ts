@@ -212,7 +212,7 @@ async function checkDirectoryWithGoogleSearch(
     }
 
     const totalResults = parseInt(data.searchInformation?.totalResults || '0', 10);
-    const hasItems = data.items && data.items.length > 0;
+    const hasItems = Boolean(data.items && data.items.length > 0);
     const found = totalResults > 0 || hasItems;
     const listingUrl = hasItems ? data.items![0].link : undefined;
 
