@@ -47,36 +47,34 @@ interface GooglePlaceDetails {
   status: string;
 }
 
-// Directory search URL patterns
-const DIRECTORY_SEARCH_URLS: Record<string, (businessName: string, city: string) => string> = {
-  'yell.com': (businessName, city) =>
-    `https://www.yell.com/s/${encodeURIComponent(businessName)}+${encodeURIComponent(city)}.html`,
-  'freeindex.co.uk': (businessName, city) =>
-    `https://www.freeindex.co.uk/searchresults.htm?k=${encodeURIComponent(businessName)}&l=${encodeURIComponent(city)}`,
-  'yelp.co.uk': (businessName, city) =>
-    `https://www.yelp.co.uk/search?find_desc=${encodeURIComponent(businessName)}&find_loc=${encodeURIComponent(city)}`,
-  'trustpilot.com': (businessName) =>
-    `https://uk.trustpilot.com/search?query=${encodeURIComponent(businessName)}`,
-  'bark.com': (businessName) =>
-    `https://www.bark.com/en/gb/search/?q=${encodeURIComponent(businessName)}`,
-};
+interface GoogleCustomSearchResponse {
+  items?: Array<{
+    title: string;
+    link: string;
+    snippet: string;
+    displayLink: string;
+  }>;
+  searchInformation?: {
+    totalResults: string;
+  };
+  error?: {
+    code: number;
+    message: string;
+  };
+}
 
-const BROWSER_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+// Priority directories to check (limited to 5 due to API quota - 100 queries/day free tier)
+const PRIORITY_DIRECTORIES = [
+  'yell.com',
+  'yelp.co.uk',
+  'freeindex.co.uk',
+  'thomsonlocal.com',
+  'facebook.com',
+];
 
 // Rate limiting helper - sleep for specified ms
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Get first two words of business name for matching
-function getSearchTerms(businessName: string): string {
-  const words = businessName
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .split(/\s+/)
-    .filter((w) => w.length > 1);
-  return words.slice(0, 2).join(' ');
 }
 
 // Normalise phone numbers for comparison (UK format)
@@ -194,42 +192,37 @@ function checkNAPConsistency(
   return { isConsistent, nameMatch, addressMatch: postcodeInGoogle ? 100 : addressMatch, phoneMatch, details };
 }
 
-// Check if a business exists on a directory by fetching search page
-async function checkDirectoryListing(
-  directoryDomain: string,
-  searchUrl: string,
-  searchTerms: string
-): Promise<{ found: boolean; url: string }> {
+// Check if a business exists on a directory using Google Custom Search API
+async function checkDirectoryWithGoogleSearch(
+  businessName: string,
+  domain: string,
+  apiKey: string,
+  searchEngineId: string
+): Promise<{ found: boolean; url?: string }> {
+  const query = `"${businessName}" site:${domain}`;
+  const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encodeURIComponent(query)}`;
+
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(url);
+    const data: GoogleCustomSearchResponse = await response.json();
 
-    const response = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': BROWSER_USER_AGENT,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-GB,en;q=0.9',
-      },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.log(`[Directory Check] ${directoryDomain}: HTTP ${response.status}, found: false`);
-      return { found: false, url: searchUrl };
+    if (data.error) {
+      console.log(`[Google Search] ${domain}: API error - ${data.error.message}, found: false`);
+      return { found: false };
     }
 
-    const html = await response.text();
-    const htmlLower = html.toLowerCase();
-    const found = htmlLower.includes(searchTerms);
+    const totalResults = parseInt(data.searchInformation?.totalResults || '0', 10);
+    const hasItems = data.items && data.items.length > 0;
+    const found = totalResults > 0 || hasItems;
+    const listingUrl = hasItems ? data.items![0].link : undefined;
 
-    console.log(`[Directory Check] ${directoryDomain}: URL=${searchUrl}, found=${found}`);
-    return { found, url: searchUrl };
+    console.log(`[Google Search] ${domain}: query="${query}", totalResults=${totalResults}, found=${found}`);
+
+    return { found, url: listingUrl };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.log(`[Directory Check] ${directoryDomain}: Error - ${errorMessage}, found: false`);
-    return { found: false, url: searchUrl };
+    console.log(`[Google Search] ${domain}: Error - ${errorMessage}, found: false`);
+    return { found: false };
   }
 }
 
@@ -351,69 +344,80 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Direct HTTP directory detection
-    console.log(`[Directory Detection] Starting for "${client.business_name}" in ${client.city}`);
-    const searchTerms = getSearchTerms(client.business_name);
-    console.log(`[Directory Detection] Search terms: "${searchTerms}"`);
-
+    // Google Custom Search directory detection
+    const googleSearchApiKey = process.env.GOOGLE_SEARCH_API_KEY;
+    const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
     let listingsDetected = 0;
+    let directoriesChecked = 0;
 
-    // Get all citations with directory info
-    const { data: allCitationsWithDirs } = await supabase
-      .from('citations')
-      .select('id, directory_id, status, directories(id, name, domain)')
-      .eq('client_id', clientId);
+    if (googleSearchApiKey && googleSearchEngineId) {
+      console.log(`[Directory Detection] Starting Google Custom Search for "${client.business_name}"`);
 
-    // Build a map of domain -> citation info
-    const citationsByDomain = new Map<
-      string,
-      { citationId: string; directoryId: string; directoryName: string }
-    >();
+      // Get all citations with directory info
+      const { data: allCitationsWithDirs } = await supabase
+        .from('citations')
+        .select('id, directory_id, status, directories(id, name, domain)')
+        .eq('client_id', clientId);
 
-    for (const citation of allCitationsWithDirs || []) {
-      const dir = (citation as any).directories;
-      if (dir?.domain) {
-        citationsByDomain.set(dir.domain, {
-          citationId: citation.id,
-          directoryId: dir.id,
-          directoryName: dir.name,
-        });
-      }
-    }
+      // Build a map of domain -> citation info
+      const citationsByDomain = new Map<
+        string,
+        { citationId: string; directoryId: string; directoryName: string }
+      >();
 
-    // Check each supported directory
-    for (const [domain, urlBuilder] of Object.entries(DIRECTORY_SEARCH_URLS)) {
-      const citationInfo = citationsByDomain.get(domain);
-      if (!citationInfo) {
-        console.log(`[Directory Detection] Skipping ${domain} - no matching directory in database`);
-        continue;
-      }
-
-      const searchUrl = urlBuilder(client.business_name, client.city);
-      const result = await checkDirectoryListing(domain, searchUrl, searchTerms);
-
-      if (result.found) {
-        listingsDetected++;
-        const { error: updateError } = await supabase
-          .from('citations')
-          .update({
-            status: 'live',
-            listing_url: result.url,
-            nap_consistent: true,
-            verified_at: new Date().toISOString(),
-          })
-          .eq('id', citationInfo.citationId);
-
-        if (updateError) {
-          console.error(`Failed to update citation for ${domain}:`, updateError);
+      for (const citation of allCitationsWithDirs || []) {
+        const dir = (citation as any).directories;
+        if (dir?.domain) {
+          citationsByDomain.set(dir.domain, {
+            citationId: citation.id,
+            directoryId: dir.id,
+            directoryName: dir.name,
+          });
         }
       }
 
-      // Rate limit: 1 second between requests
-      await sleep(1000);
-    }
+      // Check only priority directories (limit 5 due to API quota)
+      for (const domain of PRIORITY_DIRECTORIES) {
+        const citationInfo = citationsByDomain.get(domain);
+        if (!citationInfo) {
+          console.log(`[Directory Detection] Skipping ${domain} - no matching directory in database`);
+          continue;
+        }
 
-    console.log(`[Directory Detection] Complete: ${listingsDetected} listings found`);
+        const result = await checkDirectoryWithGoogleSearch(
+          client.business_name,
+          domain,
+          googleSearchApiKey,
+          googleSearchEngineId
+        );
+
+        directoriesChecked++;
+
+        if (result.found) {
+          listingsDetected++;
+          const { error: updateError } = await supabase
+            .from('citations')
+            .update({
+              status: 'live',
+              listing_url: result.url,
+              nap_consistent: true,
+              verified_at: new Date().toISOString(),
+            })
+            .eq('id', citationInfo.citationId);
+
+          if (updateError) {
+            console.error(`Failed to update citation for ${domain}:`, updateError);
+          }
+        }
+
+        // Rate limit: 500ms between requests
+        await sleep(500);
+      }
+
+      console.log(`[Directory Detection] Complete: ${listingsDetected}/${directoriesChecked} listings found`);
+    } else {
+      console.log('[Directory Detection] Skipped - GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_ENGINE_ID not configured');
+    }
 
     // Calculate citation score based on live citations
     const { data: allCitations } = await supabase
@@ -486,9 +490,9 @@ export async function POST(request: NextRequest) {
         coverage_percentage: directoryCount > 0 ? Math.round((liveCitations / directoryCount) * 100) : 0,
       },
       directory_detection: {
-        method: 'direct_http',
+        method: 'google_custom_search',
         listings_detected: listingsDetected,
-        directories_checked: Object.keys(DIRECTORY_SEARCH_URLS).length,
+        directories_checked: directoriesChecked,
       },
       scan_timestamp: new Date().toISOString(),
     });
