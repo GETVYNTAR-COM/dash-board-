@@ -192,14 +192,19 @@ function checkNAPConsistency(
   return { isConsistent, nameMatch, addressMatch: postcodeInGoogle ? 100 : addressMatch, phoneMatch, details };
 }
 
-// Check if a business exists on a directory using Google Custom Search API
-async function checkDirectoryWithGoogleSearch(
-  businessName: string,
-  domain: string,
+// Google Custom Search helper with detailed return
+interface GoogleSearchResult {
+  totalResults: number;
+  itemsLen: number;
+  firstLink?: string;
+  error?: { code: number; message: string };
+}
+
+async function googleSearch(
+  query: string,
   apiKey: string,
   searchEngineId: string
-): Promise<{ found: boolean; url?: string }> {
-  const query = `"${businessName}" site:${domain}`;
+): Promise<GoogleSearchResult> {
   const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encodeURIComponent(query)}`;
 
   try {
@@ -207,23 +212,111 @@ async function checkDirectoryWithGoogleSearch(
     const data: GoogleCustomSearchResponse = await response.json();
 
     if (data.error) {
-      console.log(`[Google Search] ${domain}: API error - ${data.error.message}, found: false`);
-      return { found: false };
+      return {
+        totalResults: 0,
+        itemsLen: 0,
+        error: data.error,
+      };
     }
 
-    const totalResults = parseInt(data.searchInformation?.totalResults || '0', 10);
-    const hasItems = Boolean(data.items && data.items.length > 0);
-    const found = totalResults > 0 || hasItems;
-    const listingUrl = hasItems ? data.items![0].link : undefined;
+    const totalResults = Number(data.searchInformation?.totalResults) || 0;
+    const itemsLen = data.items?.length ?? 0;
+    const firstLink = data.items?.[0]?.link;
 
-    console.log(`[Google Search] ${domain}: query="${query}", totalResults=${totalResults}, found=${found}`);
-
-    return { found, url: listingUrl };
+    return { totalResults, itemsLen, firstLink };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.log(`[Google Search] ${domain}: Error - ${errorMessage}, found: false`);
-    return { found: false };
+    return {
+      totalResults: 0,
+      itemsLen: 0,
+      error: { code: -1, message: errorMessage },
+    };
   }
+}
+
+// Normalize domain for specific cases (e.g., Trustpilot UK)
+function normalizeDomain(domain: string): string {
+  if (domain.includes('trustpilot.com') && !domain.includes('uk.trustpilot.com')) {
+    return 'uk.trustpilot.com';
+  }
+  return domain;
+}
+
+// Strip common suffixes from business name for variant C query
+function stripBusinessNameSuffixes(name: string): string {
+  const suffixes = [
+    'manchester', 'london', 'birmingham', 'leeds', 'liverpool', 'bristol',
+    'sheffield', 'edinburgh', 'glasgow', 'cardiff', 'belfast', 'nottingham',
+    'ltd', 'limited', 'llc', 'inc', 'plc', 'uk', 'group', 'services', 'solutions'
+  ];
+
+  let stripped = name.toLowerCase();
+  for (const suffix of suffixes) {
+    stripped = stripped.replace(new RegExp(`\\b${suffix}\\b`, 'gi'), '').trim();
+  }
+  // Clean up extra spaces and return with original casing style
+  stripped = stripped.replace(/\s+/g, ' ').trim();
+  return stripped || name; // Return original if everything was stripped
+}
+
+// Check if a business exists on a directory using Google Custom Search API with query variants
+async function checkDirectoryWithGoogleSearch(
+  businessName: string,
+  domain: string,
+  apiKey: string,
+  searchEngineId: string,
+  city?: string,
+  postcode?: string
+): Promise<{ found: boolean; url?: string; queriesUsed: number }> {
+  const normalizedDomain = normalizeDomain(domain);
+  let queriesUsed = 0;
+
+  // Build query variants
+  const variants: string[] = [];
+
+  // Variant A: Basic business name + site
+  variants.push(`"${businessName}" site:${normalizedDomain}`);
+
+  // Variant B: Business name + city/postcode (if available)
+  if (city || postcode) {
+    const location = city || postcode;
+    variants.push(`"${businessName}" "${location}" site:${normalizedDomain}`);
+  }
+
+  // Variant C: Stripped business name (if different from original)
+  const strippedName = stripBusinessNameSuffixes(businessName);
+  if (strippedName.toLowerCase() !== businessName.toLowerCase() && strippedName.length > 2) {
+    variants.push(`"${strippedName}" site:${normalizedDomain}`);
+  }
+
+  console.log(`[Google Search] ${domain} -> ${normalizedDomain}: trying ${variants.length} query variants`);
+
+  // Try each variant, stop on first hit
+  for (const query of variants) {
+    queriesUsed++;
+    const result = await googleSearch(query, apiKey, searchEngineId);
+
+    console.log(`[Google Search] ${normalizedDomain}: query="${query}", totalResults=${result.totalResults}, itemsLen=${result.itemsLen}, firstLink=${result.firstLink ?? 'none'}${result.error ? `, error=${JSON.stringify(result.error)}` : ''}`);
+
+    // Found logic: itemsLen > 0 is the reliable indicator
+    if (result.itemsLen > 0) {
+      console.log(`[Google Search] ${normalizedDomain}: FOUND on variant "${query}"`);
+      return { found: true, url: result.firstLink, queriesUsed };
+    }
+
+    if (result.error) {
+      console.log(`[Google Search] ${normalizedDomain}: API error on variant, stopping: ${result.error.message}`);
+      return { found: false, queriesUsed };
+    }
+
+    // Rate limit between variant attempts
+    if (variants.indexOf(query) < variants.length - 1) {
+      await sleep(500);
+    }
+  }
+
+  console.log(`[Google Search] ${normalizedDomain}: NOT FOUND after ${queriesUsed} queries`);
+  return { found: false, queriesUsed };
 }
 
 export async function POST(request: NextRequest) {
@@ -349,9 +442,12 @@ export async function POST(request: NextRequest) {
     const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
     let listingsDetected = 0;
     let directoriesChecked = 0;
+    let totalQueriesUsed = 0;
 
     if (googleSearchApiKey && googleSearchEngineId) {
-      console.log(`[Directory Detection] Starting Google Custom Search for "${client.business_name}"`);
+      console.log(`[Directory Detection] Starting scan for "${client.business_name}" (${client.city}, ${client.postcode})`);
+      console.log(`[Directory Detection] API Key: ${googleSearchApiKey.slice(0, 8)}...${googleSearchApiKey.slice(-4)}`);
+      console.log(`[Directory Detection] Search Engine ID: ${googleSearchEngineId}`);
 
       // Get all citations with directory info
       const { data: allCitationsWithDirs } = await supabase
@@ -366,7 +462,7 @@ export async function POST(request: NextRequest) {
       >();
 
       for (const citation of allCitationsWithDirs || []) {
-        const dir = (citation as any).directories;
+        const dir = (citation as unknown as { directories: { id: string; name: string; domain: string } }).directories;
         if (dir?.domain) {
           citationsByDomain.set(dir.domain, {
             citationId: citation.id,
@@ -376,6 +472,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      console.log(`[Directory Detection] Found ${citationsByDomain.size} directories in database`);
+      console.log(`[Directory Detection] Priority directories to check: ${PRIORITY_DIRECTORIES.join(', ')}`);
+
       // Check only priority directories (limit 5 due to API quota)
       for (const domain of PRIORITY_DIRECTORIES) {
         const citationInfo = citationsByDomain.get(domain);
@@ -384,39 +483,53 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        console.log(`[Directory Detection] Checking ${citationInfo.directoryName} (${domain})...`);
+
         const result = await checkDirectoryWithGoogleSearch(
           client.business_name,
           domain,
           googleSearchApiKey,
-          googleSearchEngineId
+          googleSearchEngineId,
+          client.city,
+          client.postcode
         );
 
         directoriesChecked++;
+        totalQueriesUsed += result.queriesUsed;
 
         if (result.found) {
           listingsDetected++;
+          console.log(`[Directory Detection] ✓ ${citationInfo.directoryName}: LIVE at ${result.url}`);
+
           const { error: updateError } = await supabase
             .from('citations')
             .update({
               status: 'live',
-              listing_url: result.url,
+              listing_url: result.url ?? null,
               nap_consistent: true,
               verified_at: new Date().toISOString(),
             })
             .eq('id', citationInfo.citationId);
 
           if (updateError) {
-            console.error(`Failed to update citation for ${domain}:`, updateError);
+            console.error(`[Directory Detection] Failed to update citation for ${domain}:`, updateError);
           }
+        } else {
+          console.log(`[Directory Detection] ✗ ${citationInfo.directoryName}: not found`);
         }
 
-        // Rate limit: 500ms between requests
+        // Rate limit: 500ms between directories
         await sleep(500);
       }
 
-      console.log(`[Directory Detection] Complete: ${listingsDetected}/${directoriesChecked} listings found`);
+      console.log(`[Directory Detection] === SCAN COMPLETE ===`);
+      console.log(`[Directory Detection] Directories checked: ${directoriesChecked}`);
+      console.log(`[Directory Detection] Listings found: ${listingsDetected}`);
+      console.log(`[Directory Detection] Total API queries used: ${totalQueriesUsed}`);
     } else {
       console.log('[Directory Detection] Skipped - GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_ENGINE_ID not configured');
+      if (!googleSearchApiKey) console.log('[Directory Detection] Missing: GOOGLE_SEARCH_API_KEY');
+      if (!googleSearchEngineId) console.log('[Directory Detection] Missing: GOOGLE_SEARCH_ENGINE_ID');
     }
 
     // Calculate citation score based on live citations
@@ -493,6 +606,7 @@ export async function POST(request: NextRequest) {
         method: 'google_custom_search',
         listings_detected: listingsDetected,
         directories_checked: directoriesChecked,
+        total_queries_used: totalQueriesUsed,
       },
       scan_timestamp: new Date().toISOString(),
     });
