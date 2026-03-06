@@ -215,11 +215,21 @@ async function googleSearch(
 ): Promise<GoogleSearchResult> {
   const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encodeURIComponent(query)}`;
 
+  console.log(`[Google API] >>> Making request`);
+  console.log(`[Google API]     Query: "${query}"`);
+  console.log(`[Google API]     API Key: ${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`);
+  console.log(`[Google API]     Search Engine ID: ${searchEngineId}`);
+
   try {
     const response = await fetch(url);
+    console.log(`[Google API] <<< Response status: ${response.status} ${response.statusText}`);
+
     const data: GoogleCustomSearchResponse = await response.json();
 
     if (data.error) {
+      console.log(`[Google API] ERROR from Google API:`);
+      console.log(`[Google API]     Code: ${data.error.code}`);
+      console.log(`[Google API]     Message: ${data.error.message}`);
       return {
         totalResults: 0,
         itemsLen: 0,
@@ -231,9 +241,12 @@ async function googleSearch(
     const itemsLen = data.items?.length ?? 0;
     const firstLink = data.items?.[0]?.link;
 
+    console.log(`[Google API] SUCCESS: totalResults=${totalResults}, itemsLen=${itemsLen}, firstLink=${firstLink ?? 'none'}`);
+
     return { totalResults, itemsLen, firstLink };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.log(`[Google API] EXCEPTION: ${errorMessage}`);
     return {
       totalResults: 0,
       itemsLen: 0,
@@ -488,6 +501,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Google Custom Search directory detection
+    console.log(`[Directory Detection] ========== ENHANCED DETECTION START ==========`);
+    console.log(`[Directory Detection] Checking environment variables...`);
+    console.log(`[Directory Detection]   GOOGLE_SEARCH_API_KEY: ${process.env.GOOGLE_SEARCH_API_KEY ? 'SET (' + process.env.GOOGLE_SEARCH_API_KEY.length + ' chars)' : 'NOT SET'}`);
+    console.log(`[Directory Detection]   GOOGLE_SEARCH_ENGINE_ID: ${process.env.GOOGLE_SEARCH_ENGINE_ID ? 'SET (' + process.env.GOOGLE_SEARCH_ENGINE_ID + ')' : 'NOT SET'}`);
+
     const googleSearchApiKey = process.env.GOOGLE_SEARCH_API_KEY;
     const googleSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
     let listingsDetected = 0;
@@ -495,8 +513,9 @@ export async function POST(request: NextRequest) {
     let totalQueriesUsed = 0;
 
     if (googleSearchApiKey && googleSearchEngineId) {
-      console.log(`[Directory Detection] Starting scan for "${client.business_name}" (${client.city}, ${client.postcode})`);
-      console.log(`[Directory Detection] API Key: ${googleSearchApiKey.slice(0, 8)}...${googleSearchApiKey.slice(-4)}`);
+      console.log(`[Directory Detection] Credentials found - proceeding with scan`);
+      console.log(`[Directory Detection] Client: "${client.business_name}" (${client.city}, ${client.postcode})`);
+      console.log(`[Directory Detection] API Key preview: ${googleSearchApiKey.slice(0, 8)}...${googleSearchApiKey.slice(-4)}`);
       console.log(`[Directory Detection] Search Engine ID: ${googleSearchEngineId}`);
 
       // Get all citations with directory info
