@@ -63,14 +63,22 @@ interface GoogleCustomSearchResponse {
   };
 }
 
-// Priority directories to check (limited to 5 due to API quota - 100 queries/day free tier)
+// Priority directories to check - expanded list for better UK coverage
 const PRIORITY_DIRECTORIES = [
   'yell.com',
   'yelp.co.uk',
   'freeindex.co.uk',
   'thomsonlocal.com',
   'facebook.com',
+  'checkatrade.com',
+  'trustpilot.com',
+  'touchlocal.com',
+  'scoot.co.uk',
+  'hotfrog.co.uk',
 ];
+
+// Max directories to check per scan (to conserve API quota - 100/day free tier)
+const MAX_DIRECTORIES_PER_SCAN = 5;
 
 // Rate limiting helper - sleep for specified ms
 function sleep(ms: number): Promise<void> {
@@ -242,19 +250,36 @@ function normalizeDomain(domain: string): string {
   return domain;
 }
 
-// Strip common suffixes from business name for variant C query
+// Strip common suffixes from business name for variant D query
 function stripBusinessNameSuffixes(name: string): string {
-  const suffixes = [
-    'manchester', 'london', 'birmingham', 'leeds', 'liverpool', 'bristol',
-    'sheffield', 'edinburgh', 'glasgow', 'cardiff', 'belfast', 'nottingham',
-    'ltd', 'limited', 'llc', 'inc', 'plc', 'uk', 'group', 'services', 'solutions'
+  // Business suffixes
+  const businessSuffixes = [
+    'ltd', 'limited', 'llc', 'inc', 'company', 'co', 'corp', 'corporation',
+    'services', 'solutions', 'group', 'international', 'associates', 'partners',
+    'consulting', 'consultancy', 'agency', 'studio', 'digital', 'media',
+    'marketing', 'seo', 'web', 'design', 'development', 'plc', 'uk'
   ];
 
+  // UK cities and regions
+  const ukLocations = [
+    'london', 'manchester', 'birmingham', 'liverpool', 'leeds', 'sheffield',
+    'bristol', 'newcastle', 'nottingham', 'leicester', 'coventry', 'bradford',
+    'edinburgh', 'glasgow', 'cardiff', 'belfast', 'brighton', 'plymouth',
+    'stoke', 'wolverhampton', 'derby', 'swansea', 'southampton', 'salford',
+    'portsmouth', 'aberdeen', 'westminster', 'york', 'peterborough', 'dundee',
+    'lancaster', 'oxford', 'cambridge', 'canterbury', 'winchester', 'bath',
+    'preston', 'chester', 'durham', 'exeter', 'gloucester', 'lincoln',
+    'worcester', 'carlisle', 'norwich', 'ipswich', 'blackpool', 'bournemouth',
+    'widnes', 'warrington', 'st helens', 'runcorn', 'crewe', 'macclesfield'
+  ];
+
+  const allSuffixes = [...businessSuffixes, ...ukLocations];
+
   let stripped = name.toLowerCase();
-  for (const suffix of suffixes) {
+  for (const suffix of allSuffixes) {
     stripped = stripped.replace(new RegExp(`\\b${suffix}\\b`, 'gi'), '').trim();
   }
-  // Clean up extra spaces and return with original casing style
+  // Clean up extra spaces
   stripped = stripped.replace(/\s+/g, ' ').trim();
   return stripped || name; // Return original if everything was stripped
 }
@@ -271,19 +296,22 @@ async function checkDirectoryWithGoogleSearch(
   const normalizedDomain = normalizeDomain(domain);
   let queriesUsed = 0;
 
-  // Build query variants
+  // Build query variants - try multiple approaches to find listings
   const variants: string[] = [];
 
-  // Variant A: Basic business name + site
+  // Variant A: Exact business name with quotes
   variants.push(`"${businessName}" site:${normalizedDomain}`);
 
-  // Variant B: Business name + city/postcode (if available)
+  // Variant B: Business name WITHOUT quotes (catches partial matches)
+  variants.push(`${businessName} site:${normalizedDomain}`);
+
+  // Variant C: Business name + city/postcode (if available)
   if (city || postcode) {
     const location = city || postcode;
     variants.push(`"${businessName}" "${location}" site:${normalizedDomain}`);
   }
 
-  // Variant C: Stripped business name (if different from original)
+  // Variant D: Stripped business name (if different from original)
   const strippedName = stripBusinessNameSuffixes(businessName);
   if (strippedName.toLowerCase() !== businessName.toLowerCase() && strippedName.length > 2) {
     variants.push(`"${strippedName}" site:${normalizedDomain}`);
@@ -495,10 +523,10 @@ export async function POST(request: NextRequest) {
       }
 
       console.log(`[Directory Detection] Found ${citationsByDomain.size} directories in database`);
-      console.log(`[Directory Detection] Priority directories to check: ${PRIORITY_DIRECTORIES.join(', ')}`);
+      console.log(`[Directory Detection] Priority directories: ${PRIORITY_DIRECTORIES.slice(0, MAX_DIRECTORIES_PER_SCAN).join(', ')}`);
 
-      // Check only priority directories (limit 5 due to API quota)
-      for (const domain of PRIORITY_DIRECTORIES) {
+      // Check priority directories (limited by MAX_DIRECTORIES_PER_SCAN to conserve quota)
+      for (const domain of PRIORITY_DIRECTORIES.slice(0, MAX_DIRECTORIES_PER_SCAN)) {
         const citationInfo = citationsByDomain.get(domain);
         if (!citationInfo) {
           console.log(`[Directory Detection] Skipping ${domain} - no matching directory in database`);
