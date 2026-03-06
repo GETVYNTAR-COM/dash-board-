@@ -319,12 +319,31 @@ async function checkDirectoryWithGoogleSearch(
   return { found: false, queriesUsed };
 }
 
+// Scan cooldown: prevent re-scanning same client within 5 minutes
+const SCAN_COOLDOWN_MS = 5 * 60 * 1000;
+const recentScans = new Map<string, number>();
+
 export async function POST(request: NextRequest) {
   try {
-    const { clientId } = await request.json();
+    const { clientId, force } = await request.json();
 
     if (!clientId) {
       return NextResponse.json({ error: 'clientId is required' }, { status: 400 });
+    }
+
+    // Check cooldown (skip if force=true)
+    const lastScan = recentScans.get(clientId);
+    const now = Date.now();
+    if (!force && lastScan && now - lastScan < SCAN_COOLDOWN_MS) {
+      const remainingMs = SCAN_COOLDOWN_MS - (now - lastScan);
+      const remainingMins = Math.ceil(remainingMs / 60000);
+      console.log(`[Scan Cooldown] Client ${clientId} was scanned recently, ${remainingMins}min remaining`);
+      return NextResponse.json({
+        success: false,
+        error: 'cooldown',
+        message: `Please wait ${remainingMins} minute(s) before scanning again`,
+        cooldown_remaining_ms: remainingMs,
+      }, { status: 429 });
     }
 
     const supabase = createServiceRoleClient();
@@ -339,6 +358,9 @@ export async function POST(request: NextRequest) {
     if (clientError || !client) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
+
+    // Mark scan start time
+    recentScans.set(clientId, now);
 
     // Get all directories from database
     const { data: directories, error: dirError } = await supabase
