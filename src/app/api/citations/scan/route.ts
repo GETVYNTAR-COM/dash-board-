@@ -213,21 +213,22 @@ async function googleSearch(
   apiKey: string,
   searchEngineId: string
 ): Promise<GoogleSearchResult> {
-  const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encodeURIComponent(query)}`;
+  const fullSearchUrl = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encodeURIComponent(query)}`;
 
   console.log(`[Google API] >>> Making request`);
   console.log(`[Google API]     Query: "${query}"`);
   console.log(`[Google API]     API Key: ${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`);
   console.log(`[Google API]     Search Engine ID: ${searchEngineId}`);
+  console.log('🌐 Google API URL:', fullSearchUrl.replace(apiKey, 'API_KEY_HIDDEN'));
 
   try {
-    const response = await fetch(url);
-    console.log(`[Google API] <<< Response status: ${response.status} ${response.statusText}`);
-
+    const response = await fetch(fullSearchUrl);
     const data: GoogleCustomSearchResponse = await response.json();
 
+    console.log('📊 Google API Response:', response.status, 'Items found:', data.items?.length || 0);
+
     if (data.error) {
-      console.log(`[Google API] ERROR from Google API:`);
+      console.log(`[Google API] ❌ ERROR from Google API:`);
       console.log(`[Google API]     Code: ${data.error.code}`);
       console.log(`[Google API]     Message: ${data.error.message}`);
       return {
@@ -241,12 +242,13 @@ async function googleSearch(
     const itemsLen = data.items?.length ?? 0;
     const firstLink = data.items?.[0]?.link;
 
-    console.log(`[Google API] SUCCESS: totalResults=${totalResults}, itemsLen=${itemsLen}, firstLink=${firstLink ?? 'none'}`);
+    console.log(`[Google API] ✅ SUCCESS: totalResults=${totalResults}, itemsLen=${itemsLen}, firstLink=${firstLink ?? 'none'}`);
 
     return { totalResults, itemsLen, firstLink };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.log(`[Google API] EXCEPTION: ${errorMessage}`);
+    console.log(`[Google API] ❌ EXCEPTION: ${errorMessage}`);
+    console.log(`[Google API] Full error:`, error);
     return {
       totalResults: 0,
       itemsLen: 0,
@@ -399,6 +401,10 @@ export async function POST(request: NextRequest) {
     if (clientError || !client) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
+
+    console.log('🔍 Starting citation scan for business:', client.business_name);
+    console.log('🔍 Client ID:', clientId);
+    console.log('🔍 Location:', client.city, client.postcode);
 
     // Mark scan start time
     recentScans.set(clientId, now);
@@ -569,8 +575,9 @@ export async function POST(request: NextRequest) {
         if (result.found) {
           listingsDetected++;
           console.log(`[Directory Detection] ✓ ${citationInfo.directoryName}: LIVE at ${result.url}`);
+          console.log('💾 Saving to database - Directory:', citationInfo.directoryName, 'Found:', result.found, 'URL:', result.url);
 
-          const { error: updateError } = await supabase
+          const { data: updateData, error: updateError } = await supabase
             .from('citations')
             .update({
               status: 'live',
@@ -578,13 +585,17 @@ export async function POST(request: NextRequest) {
               nap_consistent: true,
               verified_at: new Date().toISOString(),
             })
-            .eq('id', citationInfo.citationId);
+            .eq('id', citationInfo.citationId)
+            .select();
+
+          console.log('✅ Database save result:', updateError ? `ERROR: ${JSON.stringify(updateError)}` : `SUCCESS - Updated ${updateData?.length || 0} rows`);
 
           if (updateError) {
-            console.error(`[Directory Detection] Failed to update citation for ${domain}:`, updateError);
+            console.error(`[Directory Detection] ❌ Failed to update citation for ${domain}:`, updateError);
           }
         } else {
           console.log(`[Directory Detection] ✗ ${citationInfo.directoryName}: not found`);
+          console.log('💾 Skipping database save - Directory:', citationInfo.directoryName, 'Found:', result.found);
         }
 
         // Rate limit: 500ms between directories
@@ -602,16 +613,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate citation score based on live citations
-    const { data: allCitations } = await supabase
+    console.log('📈 ========== CITATION SCORE CALCULATION ==========');
+    const { data: allCitations, error: fetchCitationsError } = await supabase
       .from('citations')
       .select('status, nap_consistent')
       .eq('client_id', clientId);
 
+    if (fetchCitationsError) {
+      console.log('📈 ❌ Error fetching citations:', fetchCitationsError);
+    }
+
+    console.log('📈 All citations for client:', JSON.stringify(allCitations));
+
     const totalCitations = allCitations?.length || 0;
     const liveCitations = allCitations?.filter((c) => c.status === 'live').length || 0;
 
+    console.log('📈 Total citations in DB:', totalCitations);
+    console.log('📈 Live citations:', liveCitations);
+    console.log('📈 Directory count:', directoryCount);
+
     // Citation score: live citations / total directories * 100
     const citationScore = directoryCount > 0 ? Math.round((liveCitations / directoryCount) * 100) : 0;
+
+    console.log('📈 Final citation score calculation:', liveCitations, '/', directoryCount, '=', citationScore, '%');
 
     // Update client's citation score and Google Places data
     const updateData: Record<string, unknown> = {
@@ -625,13 +649,18 @@ export async function POST(request: NextRequest) {
       updateData.google_reviews_count = googlePlaceDetails.user_ratings_total;
     }
 
-    const { error: updateError } = await supabase
+    console.log('📈 Updating client record with:', JSON.stringify(updateData));
+
+    const { data: clientUpdateResult, error: updateError } = await supabase
       .from('clients')
       .update(updateData)
-      .eq('id', clientId);
+      .eq('id', clientId)
+      .select();
 
     if (updateError) {
-      console.error('Failed to update client citation score:', updateError);
+      console.error('📈 ❌ Failed to update client citation score:', updateError);
+    } else {
+      console.log('📈 ✅ Client update result:', JSON.stringify(clientUpdateResult));
     }
 
     return NextResponse.json({
