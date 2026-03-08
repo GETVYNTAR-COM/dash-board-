@@ -547,30 +547,24 @@ export async function POST(request: NextRequest) {
       // Log individual result
       logDirectoryResult(result);
 
-      // Update citation in database
-      const updatePayload: {
-        status: CitationStatus;
-        listing_url: string | null;
-        nap_consistent: boolean;
-        verified_at: string;
-        verification_method?: string;
-        verification_reason?: string;
-      } = {
-        status: result.status,
-        listing_url: result.listingUrl,
-        nap_consistent: result.status === 'live' ? true : napConsistency.isConsistent,
-        verified_at: new Date().toISOString(),
-        verification_method: result.verificationMethod,
-        verification_reason: result.reason,
-      };
-
-      const { error: updateError } = await supabase
+      // Use upsert to handle both existing and new citation records
+      const { error: upsertError } = await supabase
         .from('citations')
-        .update(updatePayload)
-        .eq('id', citation.id);
+        .upsert({
+          client_id: clientId,
+          directory_id: dir.id,
+          status: result.status,
+          listing_url: result.listingUrl,
+          nap_consistent: result.status === 'live' ? true : napConsistency.isConsistent,
+          verified_at: new Date().toISOString(),
+          verification_method: result.verificationMethod,
+          verification_reason: result.reason,
+        }, {
+          onConflict: 'client_id,directory_id'
+        });
 
-      if (updateError) {
-        console.error(`[Scan] Failed to update citation for ${dir.domain}:`, updateError);
+      if (upsertError) {
+        console.error(`[Scan] Failed to upsert citation for ${dir.domain}`, upsertError);
       }
 
       scanResults.push(result);
