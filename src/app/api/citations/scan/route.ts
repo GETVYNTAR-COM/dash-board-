@@ -88,19 +88,185 @@ interface GooglePlaceDetails {
   status: string;
 }
 
-// Directories that can be checked via direct methods (not Google CSE)
-// These are directories with known URL patterns or public APIs
+// ============================================================================
+// FIRECRAWL API INTEGRATION
+// ============================================================================
+
+interface FirecrawlResponse {
+  success: boolean;
+  data?: {
+    markdown?: string;
+    html?: string;
+    metadata?: {
+      title?: string;
+      description?: string;
+      sourceURL?: string;
+    };
+  };
+  error?: string;
+}
+
+async function scrapeWithFirecrawl(url: string): Promise<{ success: boolean; markdown: string; error?: string }> {
+  const apiKey = process.env.FIRECRAWL_API_KEY;
+
+  if (!apiKey) {
+    return { success: false, markdown: '', error: 'FIRECRAWL_API_KEY not configured' };
+  }
+
+  try {
+    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        formats: ['markdown'],
+      }),
+    });
+
+    if (!response.ok) {
+      return { success: false, markdown: '', error: `Firecrawl API error: ${response.status}` };
+    }
+
+    const data: FirecrawlResponse = await response.json();
+
+    if (!data.success || !data.data?.markdown) {
+      return { success: false, markdown: '', error: data.error || 'No markdown content returned' };
+    }
+
+    return { success: true, markdown: data.data.markdown };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, markdown: '', error: errorMessage };
+  }
+}
+
+// Check if business name appears in scraped content
+function detectBusinessInContent(
+  markdown: string,
+  businessName: string,
+  phone?: string,
+  postcode?: string
+): { found: boolean; confidence: 'high' | 'medium' | 'low'; reason: string } {
+  const normalizedContent = markdown.toLowerCase();
+  const normalizedName = normaliseName(businessName);
+  const nameWords = normalizedName.split(' ').filter(w => w.length > 2);
+
+  // Check for exact business name match
+  if (normalizedContent.includes(businessName.toLowerCase())) {
+    return { found: true, confidence: 'high', reason: 'Exact business name match found' };
+  }
+
+  // Check for normalized name match
+  if (normalizedContent.includes(normalizedName)) {
+    return { found: true, confidence: 'high', reason: 'Normalized business name match found' };
+  }
+
+  // Check for phone number match (strong signal)
+  if (phone) {
+    const normalizedPhone = normalisePhone(phone);
+    const phoneInContent = normalizedContent.replace(/\D/g, '');
+    if (normalizedPhone.length >= 10 && phoneInContent.includes(normalizedPhone)) {
+      return { found: true, confidence: 'high', reason: 'Phone number match found' };
+    }
+  }
+
+  // Check for postcode match combined with partial name match
+  if (postcode) {
+    const normalizedPostcode = postcode.toLowerCase().replace(/\s/g, '');
+    const postcodeFound = normalizedContent.replace(/\s/g, '').includes(normalizedPostcode);
+
+    if (postcodeFound) {
+      // Count how many name words appear
+      const matchedWords = nameWords.filter(word => normalizedContent.includes(word));
+      if (matchedWords.length >= Math.ceil(nameWords.length * 0.6)) {
+        return { found: true, confidence: 'medium', reason: 'Postcode and partial name match found' };
+      }
+    }
+  }
+
+  // Check for majority of business name words
+  const matchedWords = nameWords.filter(word => normalizedContent.includes(word));
+  if (nameWords.length >= 2 && matchedWords.length >= Math.ceil(nameWords.length * 0.8)) {
+    return { found: true, confidence: 'low', reason: 'Majority of business name words found' };
+  }
+
+  // Check for "no results" indicators
+  const noResultsIndicators = [
+    'no results found',
+    'no businesses found',
+    'no matches found',
+    '0 results',
+    'sorry, we couldn\'t find',
+    'no listings found',
+    'try a different search',
+  ];
+
+  for (const indicator of noResultsIndicators) {
+    if (normalizedContent.includes(indicator)) {
+      return { found: false, confidence: 'high', reason: 'No results indicator found on page' };
+    }
+  }
+
+  return { found: false, confidence: 'medium', reason: 'Business name not detected in content' };
+}
+
+// Directories that can be checked via Firecrawl
+// These are directories with known URL patterns for search
 const DIRECT_CHECK_DIRECTORIES: Record<string, {
-  method: 'url_pattern' | 'api' | 'none';
-  buildUrl?: (businessName: string, city?: string) => string;
+  method: 'firecrawl' | 'none';
+  buildUrl?: (businessName: string, city?: string, postcode?: string) => string;
 }> = {
-  // Currently no directories support direct verification without Google CSE
-  // This can be expanded as we implement direct checks for specific directories
-  // Example:
-  // 'yell.com': {
-  //   method: 'url_pattern',
-  //   buildUrl: (name, city) => `https://www.yell.com/search?keywords=${encodeURIComponent(name)}&location=${encodeURIComponent(city || '')}`
-  // }
+  'yell.com': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.yell.com/ucs/UcsSearchAction.do?keywords=${encodeURIComponent(name)}&location=${encodeURIComponent(city || '')}`,
+  },
+  'thomsonlocal.com': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.thomsonlocal.com/search/${encodeURIComponent(name)}/${encodeURIComponent(city || '')}`,
+  },
+  'checkatrade.com': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.checkatrade.com/search/?what=${encodeURIComponent(name)}&where=${encodeURIComponent(city || '')}`,
+  },
+  'yelp.co.uk': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.yelp.co.uk/search?find_desc=${encodeURIComponent(name)}&find_loc=${encodeURIComponent(city || '')}`,
+  },
+  'cylex-uk.co.uk': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.cylex-uk.co.uk/search/${encodeURIComponent(name)}-${encodeURIComponent(city || '')}.html`,
+  },
+  'freeindex.co.uk': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.freeindex.co.uk/search/?k=${encodeURIComponent(name)}&l=${encodeURIComponent(city || '')}`,
+  },
+  'hotfrog.co.uk': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.hotfrog.co.uk/search/${encodeURIComponent(city || '')}/${encodeURIComponent(name)}`,
+  },
+  'scoot.co.uk': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.scoot.co.uk/find/${encodeURIComponent(name)}/in/${encodeURIComponent(city || '')}`,
+  },
+  '192.com': {
+    method: 'firecrawl',
+    buildUrl: (name, city, postcode) => `https://www.192.com/businesses/${encodeURIComponent(postcode || city || '')}/${encodeURIComponent(name)}/`,
+  },
+  'businessmagnet.co.uk': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.businessmagnet.co.uk/search/?search=${encodeURIComponent(name)}&location=${encodeURIComponent(city || '')}`,
+  },
+  'brownbook.net': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.brownbook.net/search/?what=${encodeURIComponent(name)}&where=${encodeURIComponent(city || '')},+United+Kingdom`,
+  },
+  'misterwhat.co.uk': {
+    method: 'firecrawl',
+    buildUrl: (name, city) => `https://www.misterwhat.co.uk/search?what=${encodeURIComponent(name)}&where=${encodeURIComponent(city || '')}`,
+  },
 };
 
 // Rate limiting helper
@@ -235,8 +401,9 @@ async function verifyDirectory(
   domain: string,
   directoryId: string,
   directoryName: string,
-  _city?: string,
-  _postcode?: string
+  city?: string,
+  postcode?: string,
+  phone?: string
 ): Promise<DirectoryScanResult> {
   const baseResult: DirectoryScanResult = {
     directoryId,
@@ -249,19 +416,56 @@ async function verifyDirectory(
   };
 
   try {
-    // Check if we have a direct verification method for this directory
+    // Check if we have a Firecrawl verification method for this directory
     const directMethod = DIRECT_CHECK_DIRECTORIES[domain];
 
-    if (directMethod && directMethod.method !== 'none') {
-      // Future: implement direct verification methods here
-      // For now, mark as blocked since Google CSE is removed
-      baseResult.status = 'blocked';
-      baseResult.reason = 'Direct verification method not yet implemented';
-      baseResult.verificationMethod = 'pending_implementation';
+    if (directMethod && directMethod.method === 'firecrawl' && directMethod.buildUrl) {
+      // Build the search URL for this directory
+      const searchUrl = directMethod.buildUrl(businessName, city, postcode);
+      console.log(`[Firecrawl] Scraping ${directoryName}: ${searchUrl}`);
+
+      // Scrape the directory search page
+      const scrapeResult = await scrapeWithFirecrawl(searchUrl);
+
+      if (!scrapeResult.success) {
+        console.error(`[Firecrawl] Failed to scrape ${directoryName}: ${scrapeResult.error}`);
+        baseResult.status = 'blocked';
+        baseResult.reason = `Firecrawl error: ${scrapeResult.error}`;
+        baseResult.verificationMethod = 'firecrawl_error';
+      } else {
+        // Analyze the scraped content to detect business listing
+        const detection = detectBusinessInContent(
+          scrapeResult.markdown,
+          businessName,
+          phone,
+          postcode
+        );
+
+        if (detection.found) {
+          if (detection.confidence === 'high') {
+            baseResult.status = 'live';
+            baseResult.reason = detection.reason;
+            baseResult.listingUrl = searchUrl;
+          } else if (detection.confidence === 'medium') {
+            baseResult.status = 'possible_match';
+            baseResult.reason = detection.reason;
+            baseResult.listingUrl = searchUrl;
+          } else {
+            baseResult.status = 'possible_match';
+            baseResult.reason = detection.reason;
+            baseResult.listingUrl = searchUrl;
+          }
+        } else {
+          baseResult.status = 'not_found';
+          baseResult.reason = detection.reason;
+        }
+
+        baseResult.verificationMethod = 'firecrawl';
+      }
     } else {
-      // No verification method available for this directory
+      // No Firecrawl method available for this directory
       baseResult.status = 'blocked';
-      baseResult.reason = 'Google Custom Search API removed; no alternative verification method available';
+      baseResult.reason = 'No Firecrawl search URL pattern configured for this directory';
       baseResult.verificationMethod = 'none';
     }
 
@@ -510,12 +714,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================================================
-    // DIRECTORY VERIFICATION
+    // DIRECTORY VERIFICATION (via Firecrawl)
     // ========================================================================
     console.log('');
-    console.log('[Scan] Starting directory verification...');
-    console.log('[Scan] Note: Google Custom Search API has been removed');
-    console.log('[Scan] Directories without direct verification will be marked as "blocked"');
+    console.log('[Scan] Starting directory verification via Firecrawl...');
+    console.log(`[Scan] Firecrawl API configured: ${Boolean(process.env.FIRECRAWL_API_KEY)}`);
+    console.log('[Scan] Directories without Firecrawl patterns will be marked as "blocked"');
     console.log('');
 
     // Get all citations with directory info
@@ -534,14 +738,15 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Verify this directory
+      // Verify this directory using Firecrawl
       const result = await verifyDirectory(
         client.business_name,
         dir.domain,
         dir.id,
         dir.name,
         client.city,
-        client.postcode
+        client.postcode,
+        client.phone
       );
 
       // Log individual result
@@ -686,8 +891,8 @@ export async function POST(request: NextRequest) {
         verification_method: r.verificationMethod,
       })),
       scan_info: {
-        method: 'resilient_scan_v2',
-        google_cse_enabled: false,
+        method: 'firecrawl_scan_v1',
+        firecrawl_enabled: Boolean(process.env.FIRECRAWL_API_KEY),
         google_places_enabled: Boolean(googleApiKey),
         scan_duration_ms: scanDuration,
         timestamp: new Date().toISOString(),
