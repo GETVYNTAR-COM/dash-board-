@@ -12,12 +12,14 @@ interface ReportItem {
   client: { business_name: string } | null;
 }
 
+type GenerationStep = 'idle' | 'scanning' | 'generating';
+
 export default function ReportsPage() {
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState('');
   const [reportType, setReportType] = useState<'citation_audit' | 'competitor_analysis' | 'monthly_report'>('citation_audit');
-  const [generating, setGenerating] = useState(false);
+  const [generationStep, setGenerationStep] = useState<GenerationStep>('idle');
   const [loading, setLoading] = useState(true);
   const [generatedReport, setGeneratedReport] = useState<string | null>(null);
   const [expandedReports, setExpandedReports] = useState<Set<string>>(new Set());
@@ -67,10 +69,38 @@ export default function ReportsPage() {
 
   async function handleGenerate() {
     if (!selectedClient) return;
-    setGenerating(true);
+    setGenerationStep('scanning');
     setGeneratedReport(null);
 
     try {
+      // Step 1: Run citation scan first
+      console.log('[Report] Starting citation scan...');
+      const scanRes = await fetch('/api/citations/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: selectedClient }),
+      });
+
+      const scanData = await scanRes.json();
+      if (!scanRes.ok || scanData.error) {
+        // If cooldown error, continue to report generation with existing data
+        if (scanData.error !== 'cooldown') {
+          console.error('[Report] Scan failed:', scanData.error || scanData.message);
+        } else {
+          console.log('[Report] Scan on cooldown, using existing citation data');
+        }
+      } else {
+        console.log('[Report] Scan complete:', {
+          live: scanData.citations?.live_count,
+          notFound: scanData.citations?.not_found_count,
+          blocked: scanData.citations?.blocked_count,
+        });
+      }
+
+      // Step 2: Generate the report
+      setGenerationStep('generating');
+      console.log('[Report] Generating report...');
+
       const res = await fetch('/api/ai/generate-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -104,10 +134,11 @@ export default function ReportsPage() {
           }
         }
       }
-    } catch {
+    } catch (err) {
+      console.error('[Report] Error:', err);
       alert('Failed to generate report');
     } finally {
-      setGenerating(false);
+      setGenerationStep('idle');
     }
   }
 
@@ -186,10 +217,22 @@ export default function ReportsPage() {
           <div className="flex items-end">
             <button
               onClick={handleGenerate}
-              disabled={!selectedClient || generating}
+              disabled={!selectedClient || generationStep !== 'idle'}
               className="btn-primary w-full disabled:opacity-50"
             >
-              {generating ? 'Generating...' : 'Generate with AI'}
+              {generationStep === 'scanning' && (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Scanning directories...
+                </span>
+              )}
+              {generationStep === 'generating' && (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Generating report...
+                </span>
+              )}
+              {generationStep === 'idle' && 'Generate with AI'}
             </button>
           </div>
         </div>
