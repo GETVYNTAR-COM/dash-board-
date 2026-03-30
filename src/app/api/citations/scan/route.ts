@@ -237,7 +237,7 @@ async function searchWithSerpApi(
   businessName: string,
   siteDomain: string,
   city?: string
-): Promise<{ success: boolean; results: SerpApiResult[]; listingUrl: string | null; error?: string }> {
+): Promise<{ success: boolean; results: SerpApiResult[]; listingUrl: string | null; error?: string; rateLimited?: boolean }> {
   const apiKey = process.env.SERP_API_KEY;
 
   if (!apiKey) {
@@ -261,14 +261,30 @@ async function searchWithSerpApi(
 
     const response = await fetch(`https://serpapi.com/search?${params.toString()}`);
 
+    // Detect rate limiting
+    if (response.status === 429) {
+      console.error('[SerpAPI] Rate limit reached');
+      return { success: false, results: [], listingUrl: null, error: 'SerpAPI daily limit reached, try again tomorrow', rateLimited: true };
+    }
+
     if (!response.ok) {
       return { success: false, results: [], listingUrl: null, error: `SerpAPI error: ${response.status}` };
     }
 
     const data: SerpApiResponse = await response.json();
 
+    // Check for rate limit error in response body
     if (data.error) {
-      return { success: false, results: [], listingUrl: null, error: data.error };
+      const isRateLimit = data.error.toLowerCase().includes('limit') ||
+                          data.error.toLowerCase().includes('quota') ||
+                          data.error.toLowerCase().includes('exceeded');
+      return {
+        success: false,
+        results: [],
+        listingUrl: null,
+        error: isRateLimit ? 'SerpAPI daily limit reached, try again tomorrow' : data.error,
+        rateLimited: isRateLimit
+      };
     }
 
     const results = data.organic_results || [];
@@ -609,6 +625,15 @@ async function verifyDirectory(
 
       const serpResult = await searchWithSerpApi(businessName, domain, city);
 
+      // If rate limited, return immediately with the rate limit error
+      if (serpResult.rateLimited) {
+        console.error(`[SerpAPI] Rate limit hit for ${directoryName}`);
+        baseResult.status = 'blocked';
+        baseResult.reason = 'SerpAPI daily limit reached, try again tomorrow';
+        baseResult.verificationMethod = 'serpapi_rate_limited';
+        return baseResult;
+      }
+
       if (serpResult.success && serpResult.results.length > 0) {
         // Analyze SerpAPI results
         const analysis = analyzeSerpResults(serpResult.results, businessName, phone, postcode);
@@ -630,10 +655,15 @@ async function verifyDirectory(
           console.log(`[Directory Scan] ${directoryName} (${domain}): status=${baseResult.status}, reason="${baseResult.reason}"`);
           return baseResult;
         }
+      } else if (serpResult.success && serpResult.results.length === 0) {
+        // No results found - business not listed
+        baseResult.status = 'not_found';
+        baseResult.reason = 'No listing found in Google search results';
+        baseResult.verificationMethod = 'serpapi';
+        console.log(`[Directory Scan] ${directoryName} (${domain}): status=${baseResult.status}, reason="${baseResult.reason}"`);
+        return baseResult;
       } else if (serpResult.error) {
         console.warn(`[SerpAPI] Failed for ${directoryName}: ${serpResult.error}, trying Firecrawl fallback...`);
-      } else {
-        console.log(`[SerpAPI] No results for ${directoryName}, trying Firecrawl fallback...`);
       }
     }
 
@@ -883,102 +913,87 @@ export async function POST(request: NextRequest) {
       console.log(`[NAP Check] Consistent: ${napConsistency.isConsistent}, Name: ${napConsistency.nameMatch}%, Address: ${napConsistency.addressMatch}%, Phone: ${napConsistency.phoneMatch}%`);
     }
 
-    // Get existing citations for this client
-    const { data: existingCitations } = await supabase
-      .from('citations')
-      .select('directory_id')
-      .eq('client_id', clientId);
-
-    const existingDirectoryIds = new Set(existingCitations?.map((c: { directory_id: string }) => c.directory_id) ?? []);
-
-    // Create citation records for all directories not already tracked
-    const newCitations = [];
-
-    for (const directory of directoryList) {
-      if (!existingDirectoryIds.has(directory.id)) {
-        newCitations.push({
-          client_id: clientId,
-          directory_id: directory.id,
-          status: 'pending' as const,
-          nap_consistent: napConsistency.isConsistent,
-          created_at: new Date().toISOString(),
-        });
-      }
-    }
-
-    // Insert new citations
-    let insertedCount = 0;
-    if (newCitations.length > 0) {
-      const { data: inserted, error: insertError } = await supabase
-        .from('citations')
-        .insert(newCitations)
-        .select();
-
-      if (insertError) {
-        console.error('[Citations] Failed to insert:', insertError);
-      } else {
-        insertedCount = inserted?.length ?? 0;
-        console.log(`[Citations] Created ${insertedCount} new citation records`);
-      }
-    }
-
     // ========================================================================
     // DIRECTORY VERIFICATION (SerpAPI primary + Firecrawl fallback)
+    // ========================================================================
+    // NOTE: We do NOT pre-create 'pending' citations anymore.
+    // Citations are only created/updated with actual scan results.
     // ========================================================================
     console.log('');
     console.log('[Scan] Starting directory verification...');
     console.log(`[Scan] SerpAPI configured: ${Boolean(process.env.SERP_API_KEY)} (primary for Yell, Thomson, Checkatrade)`);
     console.log(`[Scan] Firecrawl configured: ${Boolean(process.env.FIRECRAWL_API_KEY)} (fallback)`);
+    console.log(`[Scan] Directories to scan: ${directoryList.length}`);
     console.log('');
 
-    // Get all citations with directory info
-    const { data: allCitationsWithDirs } = await supabase
-      .from('citations')
-      .select('id, directory_id, status, directories(id, name, domain)')
-      .eq('client_id', clientId);
+    // Track API errors for reporting
+    const apiErrors: string[] = [];
+    let rateLimitHit = false;
 
     const scanResults: DirectoryScanResult[] = [];
 
-    for (const citation of allCitationsWithDirs ?? []) {
-      const dir = (citation as unknown as { directories: { id: string; name: string; domain: string } | null }).directories;
-
-      if (!dir) {
-        console.warn(`[Scan] Citation ${citation.id} has no associated directory`);
+    // Scan each directory directly (no pre-created pending records)
+    for (const directory of directoryList) {
+      // If rate limit was hit, stop making more API calls
+      if (rateLimitHit) {
+        console.log(`[Scan] Skipping ${directory.name} - rate limit hit`);
+        scanResults.push({
+          directoryId: directory.id,
+          directoryName: directory.name,
+          domain: directory.domain,
+          status: 'blocked',
+          reason: 'Skipped due to API rate limit',
+          listingUrl: null,
+          verificationMethod: 'skipped',
+        });
         continue;
       }
 
-      // Verify this directory using Firecrawl
+      // Verify this directory
       const result = await verifyDirectory(
         client.business_name,
-        dir.domain,
-        dir.id,
-        dir.name,
+        directory.domain,
+        directory.id,
+        directory.name,
         client.city,
         client.postcode,
         client.phone
       );
 
+      // Check if rate limit was hit during verification
+      if (result.reason.includes('rate limit') || result.reason.includes('limit reached')) {
+        rateLimitHit = true;
+        apiErrors.push('SerpAPI daily limit reached, try again tomorrow');
+      }
+
+      // Track other API errors
+      if (result.verificationMethod === 'error' || result.verificationMethod === 'firecrawl_error') {
+        apiErrors.push(`${directory.name}: ${result.reason}`);
+      }
+
       // Log individual result
       logDirectoryResult(result);
 
-      // Use upsert to handle both existing and new citation records
-      const { error: upsertError } = await supabase
-        .from('citations')
-        .upsert({
-          client_id: clientId,
-          directory_id: dir.id,
-          status: result.status,
-          listing_url: result.listingUrl,
-          nap_consistent: result.status === 'live' ? true : napConsistency.isConsistent,
-          verified_at: new Date().toISOString(),
-          verification_method: result.verificationMethod,
-          verification_reason: result.reason,
-        }, {
-          onConflict: 'client_id,directory_id'
-        });
+      // Only upsert if we got a real result (not skipped)
+      if (result.verificationMethod !== 'skipped') {
+        const { error: upsertError } = await supabase
+          .from('citations')
+          .upsert({
+            client_id: clientId,
+            directory_id: directory.id,
+            status: result.status,
+            listing_url: result.listingUrl,
+            nap_consistent: result.status === 'live' ? true : napConsistency.isConsistent,
+            verified_at: new Date().toISOString(),
+            verification_method: result.verificationMethod,
+            verification_reason: result.reason,
+          }, {
+            onConflict: 'client_id,directory_id'
+          });
 
-      if (upsertError) {
-        console.error(`[Scan] Failed to upsert citation for ${dir.domain}`, upsertError);
+        if (upsertError) {
+          console.error(`[Scan] Failed to upsert citation for ${directory.domain}`, upsertError);
+        }
       }
 
       scanResults.push(result);
@@ -1072,12 +1087,17 @@ export async function POST(request: NextRequest) {
       },
       citations: {
         total_directories: directoryList.length,
-        existing_citations: existingDirectoryIds.size,
-        new_citations_created: insertedCount,
+        scanned_count: scanResults.length,
         live_count: liveCount,
         possible_match_count: possibleMatchCount,
         not_found_count: notFoundCount,
         blocked_count: blockedCount,
+        pending_count: 0, // No hardcoded pending - all directories are scanned
+      },
+      api_status: {
+        rate_limit_hit: rateLimitHit,
+        errors: apiErrors.length > 0 ? apiErrors : null,
+        error_message: rateLimitHit ? 'SerpAPI daily limit reached, try again tomorrow' : null,
       },
       citation_score: {
         value: citationScore,
