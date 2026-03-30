@@ -991,20 +991,22 @@ export async function POST(request: NextRequest) {
 
       // Only upsert if we got a real result (not skipped)
       if (result.verificationMethod !== 'skipped') {
-        const { error: upsertError } = await supabase
+        const { data: upsertData, error: upsertError } = await supabase
           .from('citations')
           .upsert({
             client_id: clientId,
             directory_id: directory.id,
             status: result.status,
             listing_url: result.listingUrl,
-            nap_consistent: result.status === 'live' ? true : napConsistency.isConsistent,
+            nap_consistent: false,
             verified_at: new Date().toISOString(),
             verification_method: result.verificationMethod,
             verification_reason: result.reason,
           }, {
             onConflict: 'client_id,directory_id'
           });
+
+        console.log('[Upsert]', directory.name, upsertData, upsertError);
 
         if (upsertError) {
           console.error(`[Scan] Failed to upsert citation for ${domain}`, upsertError);
