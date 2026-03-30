@@ -465,6 +465,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Extract domain from URL (e.g., "https://www.yell.com" -> "yell.com")
+function extractDomain(url: string): string {
+  try {
+    const parsed = new URL(url);
+    // Remove "www." prefix if present
+    return parsed.hostname.replace(/^www\./, '');
+  } catch {
+    // Fallback: try to extract domain manually
+    return url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+  }
+}
+
 // Normalise phone numbers for comparison (UK format)
 function normalisePhone(phone: string | null | undefined): string {
   if (!phone) return '';
@@ -934,13 +946,16 @@ export async function POST(request: NextRequest) {
 
     // Scan each directory directly (no pre-created pending records)
     for (const directory of directoryList) {
+      // Extract domain from URL (e.g., "https://www.yell.com" -> "yell.com")
+      const domain = extractDomain(directory.url);
+
       // If rate limit was hit, stop making more API calls
       if (rateLimitHit) {
         console.log(`[Scan] Skipping ${directory.name} - rate limit hit`);
         scanResults.push({
           directoryId: directory.id,
           directoryName: directory.name,
-          domain: directory.domain,
+          domain: domain,
           status: 'blocked',
           reason: 'Skipped due to API rate limit',
           listingUrl: null,
@@ -949,10 +964,10 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Verify this directory
+      // Verify this directory using SerpAPI (for supported directories) or Firecrawl
       const result = await verifyDirectory(
         client.business_name,
-        directory.domain,
+        domain,
         directory.id,
         directory.name,
         client.city,
@@ -992,7 +1007,7 @@ export async function POST(request: NextRequest) {
           });
 
         if (upsertError) {
-          console.error(`[Scan] Failed to upsert citation for ${directory.domain}`, upsertError);
+          console.error(`[Scan] Failed to upsert citation for ${domain}`, upsertError);
         }
       }
 
