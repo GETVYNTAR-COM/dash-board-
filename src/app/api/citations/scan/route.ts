@@ -991,25 +991,36 @@ export async function POST(request: NextRequest) {
 
       // Only upsert if we got a real result (not skipped)
       if (result.verificationMethod !== 'skipped') {
+        // Log BEFORE upsert - show exactly what we're trying to write
+        const upsertPayload = {
+          client_id: clientId,
+          directory_id: directory.id,
+          status: result.status,
+          listing_url: result.listingUrl,
+          nap_consistent: false,
+          verified_at: new Date().toISOString(),
+          verification_method: result.verificationMethod,
+          verification_reason: result.reason,
+        };
+        console.log('[Upsert BEFORE]', directory.name, JSON.stringify(upsertPayload, null, 2));
+
         const { data: upsertData, error: upsertError } = await supabase
           .from('citations')
-          .upsert({
-            client_id: clientId,
-            directory_id: directory.id,
-            status: result.status,
-            listing_url: result.listingUrl,
-            nap_consistent: false,
-            verified_at: new Date().toISOString(),
-            verification_method: result.verificationMethod,
-            verification_reason: result.reason,
-          }, {
+          .upsert(upsertPayload, {
             onConflict: 'client_id,directory_id'
-          });
+          })
+          .select();
 
-        console.log('[Upsert]', directory.name, upsertData, upsertError);
-
+        // Log AFTER upsert - show result
         if (upsertError) {
-          console.error(`[Scan] Failed to upsert citation for ${domain}`, upsertError);
+          console.error('[Upsert FAILED]', directory.name, {
+            error: upsertError.message,
+            code: upsertError.code,
+            details: upsertError.details,
+            hint: upsertError.hint,
+          });
+        } else {
+          console.log('[Upsert SUCCESS]', directory.name, 'rows:', upsertData?.length ?? 0);
         }
       }
 
