@@ -408,7 +408,7 @@ const DIRECT_CHECK_DIRECTORIES: Record<string, {
     buildUrl: (name, city) => `https://www.thomsonlocal.com/search/${encodeURIComponent(name)}/${encodeURIComponent(city || '')}`,
   },
   'checkatrade.com': {
-    serpApiSupported: true,
+    serpApiSupported: false,
     firecrawlFallback: true,
     buildUrl: (name, city) => `https://www.checkatrade.com/search/?what=${encodeURIComponent(name)}&where=${encodeURIComponent(city || '')}`,
   },
@@ -619,15 +619,12 @@ async function verifyDirectory(
   };
 
   try {
-    const directoryConfig = DIRECT_CHECK_DIRECTORIES[domain];
-
-    if (!directoryConfig) {
-      baseResult.status = 'blocked';
-      baseResult.reason = 'No search method configured for this directory';
-      baseResult.verificationMethod = 'none';
-      console.log(`[Directory Scan] ${directoryName} (${domain}): status=${baseResult.status}, reason="${baseResult.reason}"`);
-      return baseResult;
-    }
+    const directoryConfig = DIRECT_CHECK_DIRECTORIES[domain] ?? {
+      serpApiSupported: false,
+      firecrawlFallback: true,
+      buildUrl: (name: string, city?: string) =>
+        `https://www.${domain}/search?q=${encodeURIComponent(name)}${city ? '+' + encodeURIComponent(city) : ''}`,
+    };
 
     // ========================================================================
     // STEP 1: Try SerpAPI (primary method for supported directories)
