@@ -738,28 +738,21 @@ async function verifyDirectory(
 // CITATION SCORE CALCULATION
 // ============================================================================
 // Formula:
-// score = ((live * 1) + (possible_match * 0.5)) / (total - blocked) * 100
-// Blocked directories are excluded from the denominator
+// score = (live_count / total_directories) * 100
 // ============================================================================
 
 function calculateCitationScore(results: DirectoryScanResult[]): number {
   const liveCount = results.filter(r => r.status === 'live').length;
-  const possibleMatchCount = results.filter(r => r.status === 'possible_match').length;
-  const blockedCount = results.filter(r => r.status === 'blocked').length;
   const totalDirectories = results.length;
 
-  const denominator = totalDirectories - blockedCount;
-
-  if (denominator <= 0) {
-    // All directories are blocked - cannot calculate a meaningful score
-    console.log('[Score] All directories blocked, returning 0');
+  if (totalDirectories <= 0) {
+    console.log('[Score] No directories to score, returning 0');
     return 0;
   }
 
-  const numerator = (liveCount * 1) + (possibleMatchCount * 0.5);
-  const score = Math.round((numerator / denominator) * 100);
+  const score = Math.round((liveCount / totalDirectories) * 100);
 
-  console.log(`[Score] Calculation: ((${liveCount} * 1) + (${possibleMatchCount} * 0.5)) / (${totalDirectories} - ${blockedCount}) * 100 = ${score}%`);
+  console.log(`[Score] Calculation: (${liveCount} / ${totalDirectories}) * 100 = ${score}%`);
 
   return score;
 }
