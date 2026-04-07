@@ -592,6 +592,14 @@ function checkNAPConsistency(
   return { isConsistent, nameMatch, addressMatch: postcodeInGoogle ? 100 : addressMatch, phoneMatch, details };
 }
 
+// Domains known to cause false positives — not business directories
+const FALSE_POSITIVE_BLOCKLIST = new Set([
+  'nhs.uk',
+  'lawsociety.org.uk',
+  'icaew.com',
+  'zoopla.co.uk',
+]);
+
 // ============================================================================
 // DIRECTORY VERIFICATION
 // ============================================================================
@@ -619,6 +627,15 @@ async function verifyDirectory(
   };
 
   try {
+    // Skip domains known to produce false positives
+    if (FALSE_POSITIVE_BLOCKLIST.has(domain)) {
+      baseResult.status = 'not_found';
+      baseResult.reason = 'Directory is not a business listing site';
+      baseResult.verificationMethod = 'blocklist';
+      console.log(`[Directory Scan] ${directoryName} (${domain}): skipped (blocklisted)`);
+      return baseResult;
+    }
+
     const directoryConfig = DIRECT_CHECK_DIRECTORIES[domain] ?? {
       serpApiSupported: false,
       firecrawlFallback: true,
