@@ -143,10 +143,7 @@ async function scrapeWithFirecrawl(url: string): Promise<{ success: boolean; mar
   }
 }
 
-// Check if business is genuinely listed in scraped content.
-// A business name alone is NOT enough (large sites like NHS, Law Society, etc.
-// can mention any name without it being a real listing). We require the name
-// PLUS at least one corroborating signal: phone number, postcode, or address.
+// Check if business name appears in scraped content
 function detectBusinessInContent(
   markdown: string,
   businessName: string,
@@ -157,16 +154,46 @@ function detectBusinessInContent(
   const normalizedName = normaliseName(businessName);
   const nameWords = normalizedName.split(' ').filter(w => w.length > 2);
 
-  // ---- Step 1: Check if the business name appears at all ----
-  const exactNameFound = normalizedContent.includes(businessName.toLowerCase());
-  const normalizedNameFound = normalizedContent.includes(normalizedName);
-  const nameWordMatches = nameWords.filter(word => normalizedContent.includes(word));
-  const majorityWordsFound = nameWords.length >= 2 &&
-    nameWordMatches.length >= Math.ceil(nameWords.length * 0.8);
+  // Check for exact business name match
+  if (normalizedContent.includes(businessName.toLowerCase())) {
+    return { found: true, confidence: 'high', reason: 'Exact business name match found' };
+  }
 
-  const namePresent = exactNameFound || normalizedNameFound || majorityWordsFound;
+  // Check for normalized name match
+  if (normalizedContent.includes(normalizedName)) {
+    return { found: true, confidence: 'high', reason: 'Normalized business name match found' };
+  }
 
-  // ---- Step 2: Check for "no results" indicators (early exit) ----
+  // Check for phone number match (strong signal)
+  if (phone) {
+    const normalizedPhone = normalisePhone(phone);
+    const phoneInContent = normalizedContent.replace(/\D/g, '');
+    if (normalizedPhone.length >= 10 && phoneInContent.includes(normalizedPhone)) {
+      return { found: true, confidence: 'high', reason: 'Phone number match found' };
+    }
+  }
+
+  // Check for postcode match combined with partial name match
+  if (postcode) {
+    const normalizedPostcode = postcode.toLowerCase().replace(/\s/g, '');
+    const postcodeFound = normalizedContent.replace(/\s/g, '').includes(normalizedPostcode);
+
+    if (postcodeFound) {
+      // Count how many name words appear
+      const matchedWords = nameWords.filter(word => normalizedContent.includes(word));
+      if (matchedWords.length >= Math.ceil(nameWords.length * 0.6)) {
+        return { found: true, confidence: 'medium', reason: 'Postcode and partial name match found' };
+      }
+    }
+  }
+
+  // Check for majority of business name words
+  const matchedWords = nameWords.filter(word => normalizedContent.includes(word));
+  if (nameWords.length >= 2 && matchedWords.length >= Math.ceil(nameWords.length * 0.8)) {
+    return { found: true, confidence: 'low', reason: 'Majority of business name words found' };
+  }
+
+  // Check for "no results" indicators
   const noResultsIndicators = [
     'no results found',
     'no businesses found',
@@ -183,52 +210,7 @@ function detectBusinessInContent(
     }
   }
 
-  // If the name isn't even on the page, it's not listed
-  if (!namePresent) {
-    return { found: false, confidence: 'medium', reason: 'Business name not detected in content' };
-  }
-
-  // ---- Step 3: Require corroborating data alongside the name ----
-  // Name alone is not enough — prevents false positives on large sites.
-
-  // Phone number match (strong corroboration)
-  let phoneFound = false;
-  if (phone) {
-    const normalizedPhone = normalisePhone(phone);
-    const contentDigits = normalizedContent.replace(/\D/g, '');
-    phoneFound = normalizedPhone.length >= 10 && contentDigits.includes(normalizedPhone);
-  }
-
-  // Postcode match (strong corroboration)
-  let postcodeFound = false;
-  if (postcode) {
-    const normalizedPostcode = postcode.toLowerCase().replace(/\s/g, '');
-    postcodeFound = normalizedContent.replace(/\s/g, '').includes(normalizedPostcode);
-  }
-
-  // Determine result based on name + corroboration
-  if (exactNameFound && phoneFound) {
-    return { found: true, confidence: 'high', reason: 'Business name and phone number match found' };
-  }
-
-  if (exactNameFound && postcodeFound) {
-    return { found: true, confidence: 'high', reason: 'Business name and postcode match found' };
-  }
-
-  if (normalizedNameFound && phoneFound) {
-    return { found: true, confidence: 'high', reason: 'Normalized business name and phone number match found' };
-  }
-
-  if (normalizedNameFound && postcodeFound) {
-    return { found: true, confidence: 'medium', reason: 'Normalized business name and postcode match found' };
-  }
-
-  if (majorityWordsFound && (phoneFound || postcodeFound)) {
-    return { found: true, confidence: 'medium', reason: 'Partial business name with phone or postcode match found' };
-  }
-
-  // Name found but no corroborating data — not a real listing
-  return { found: false, confidence: 'medium', reason: 'Business name found but no phone, postcode, or address to confirm listing' };
+  return { found: false, confidence: 'medium', reason: 'Business name not detected in content' };
 }
 
 // ============================================================================
@@ -610,6 +592,14 @@ function checkNAPConsistency(
   return { isConsistent, nameMatch, addressMatch: postcodeInGoogle ? 100 : addressMatch, phoneMatch, details };
 }
 
+// Domains known to cause false positives — not business directories
+const FALSE_POSITIVE_BLOCKLIST = new Set([
+  'nhs.uk',
+  'lawsociety.org.uk',
+  'icaew.com',
+  'zoopla.co.uk',
+]);
+
 // ============================================================================
 // DIRECTORY VERIFICATION
 // ============================================================================
@@ -637,6 +627,15 @@ async function verifyDirectory(
   };
 
   try {
+    // Skip domains known to produce false positives
+    if (FALSE_POSITIVE_BLOCKLIST.has(domain)) {
+      baseResult.status = 'not_found';
+      baseResult.reason = 'Directory is not a business listing site';
+      baseResult.verificationMethod = 'blocklist';
+      console.log(`[Directory Scan] ${directoryName} (${domain}): skipped (blocklisted)`);
+      return baseResult;
+    }
+
     const directoryConfig = DIRECT_CHECK_DIRECTORIES[domain] ?? {
       serpApiSupported: false,
       firecrawlFallback: true,
