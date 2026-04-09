@@ -355,8 +355,11 @@ export default function LandingPage() {
               <div className="flex h-6 w-6 items-center justify-center rounded bg-brand-500 text-xs font-bold text-white">V</div>
               <span className="font-semibold text-white">VYNTAR Local SEO</span>
             </div>
+            <a href="mailto:dave@vyntarseo.com" className="text-sm text-gray-400 hover:text-white">
+              dave@vyntarseo.com
+            </a>
             <p className="text-sm text-gray-500">
-              &copy; {new Date().getFullYear()} VYNTAR. All rights reserved.
+              &copy; 2026 VYNTAR Growth Solutions. All rights reserved.
             </p>
           </div>
         </div>
