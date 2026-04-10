@@ -20,8 +20,8 @@ const features = [
     icon: '✅',
   },
   {
-    title: '60+ UK Directories',
-    description: 'Submit to Google Business, Yell, Thomson Local, Checkatrade, Trustpilot, and 60+ more UK-specific directories from one dashboard.',
+    title: '49 UK Directories',
+    description: 'Submit to Google Business, Yell, Thomson Local, Checkatrade, Trustpilot, and 49 UK-specific directories from one dashboard.',
     icon: '🇬🇧',
   },
   {
@@ -75,7 +75,7 @@ const pricingTiers = [
     description: 'For established agencies with high-volume citation needs.',
     features: [
       'Unlimited clients',
-      '65+ directories per client',
+      '49 directories per client',
       'AI Citation Optimizer',
       'On-demand AI reports',
       'NAP consistency checker',
@@ -100,7 +100,7 @@ const faqs = [
   },
   {
     question: 'Do you support UK-specific directories?',
-    answer: 'Absolutely. We\'ve built this specifically for the UK market. Our database includes 65+ UK directories including Yell, Thomson Local, 192.com, Scoot, Checkatrade, MyBuilder, FreeIndex, and many more trade-specific directories.',
+    answer: 'Absolutely. We\'ve built this specifically for the UK market. Our database includes 49 UK directories including Yell, Thomson Local, 192.com, Scoot, Checkatrade, MyBuilder, FreeIndex, and many more trade-specific directories.',
   },
   {
     question: 'What is NAP consistency and why does it matter?',
@@ -158,7 +158,7 @@ export default function LandingPage() {
             </span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-400 leading-relaxed">
-            AI-powered citation building across 60+ UK directories. Automate submissions,
+            AI-powered citation building across 49 UK directories. Automate submissions,
             monitor NAP consistency, and generate white-label reports — all from one dashboard.
           </p>
           <div className="mt-10 flex items-center justify-center gap-4">
@@ -174,7 +174,7 @@ export default function LandingPage() {
           {/* Stats bar */}
           <div className="mx-auto mt-16 grid max-w-3xl grid-cols-3 gap-8 rounded-2xl border border-gray-800 bg-gray-900/50 p-8 backdrop-blur-sm">
             <div>
-              <div className="text-3xl font-bold text-brand-400">65+</div>
+              <div className="text-3xl font-bold text-brand-400">49</div>
               <div className="mt-1 text-sm text-gray-400">UK Directories</div>
             </div>
             <div>
@@ -223,7 +223,7 @@ export default function LandingPage() {
             {[
               { step: '01', title: 'Add Your Clients', desc: 'Enter business details — name, address, phone, category, postcode. Our AI immediately audits their existing citation profile.' },
               { step: '02', title: 'AI Optimizes Strategy', desc: 'Claude AI analyzes competitors, identifies gaps, and recommends the highest-impact directories to target first.' },
-              { step: '03', title: 'Automate & Report', desc: 'We handle submissions to 65+ directories. Track progress in real-time and generate white-label reports for your clients.' },
+              { step: '03', title: 'Automate & Report', desc: 'We handle submissions to 49 directories. Track progress in real-time and generate white-label reports for your clients.' },
             ].map((item) => (
               <div key={item.step} className="text-center">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-500/10 text-2xl font-bold text-brand-400">
