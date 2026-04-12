@@ -50,6 +50,7 @@ const pricingTiers = [
     features: [
       'Up to 10 clients',
       '49 directories per client',
+      'Citation audit reports',
       'Monthly AI reports',
       'NAP consistency checker',
       'Email support',
@@ -64,9 +65,10 @@ const pricingTiers = [
     features: [
       'Up to 50 clients',
       '49 directories per client',
-      'AI-powered citation audit',
-      'AI report generator',
+      'Citation audit reports',
+      'Weekly AI reports',
       'NAP consistency checker',
+      'Competitor analysis',
       'Priority support',
     ],
     cta: 'Start Free Trial',
@@ -79,8 +81,12 @@ const pricingTiers = [
     features: [
       'Unlimited clients',
       '49 directories per client',
+      'Citation audit reports',
       'On-demand AI reports',
       'NAP consistency checker',
+      'Competitor analysis',
+      'White-label reports (Coming Soon)',
+      'Dedicated onboarding',
       'Priority support',
     ],
     cta: 'Start Free Trial',
