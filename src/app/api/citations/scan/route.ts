@@ -598,6 +598,7 @@ const FALSE_POSITIVE_BLOCKLIST = new Set([
   'lawsociety.org.uk',
   'icaew.com',
   'zoopla.co.uk',
+  'tripadvisor.com',
 ]);
 
 // ============================================================================
