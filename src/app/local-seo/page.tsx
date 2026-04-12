@@ -8,31 +8,37 @@ const features = [
     title: 'AI Citation Optimizer',
     description: 'Our AI analyzes your business category, location, and competitors to recommend the highest-impact directories for maximum local visibility.',
     icon: '🎯',
+    comingSoon: true,
   },
   {
     title: 'AI Report Generator',
     description: 'Generate white-label citation audit reports, competitor analyses, and monthly performance reports in seconds with Claude AI.',
     icon: '📊',
+    comingSoon: false,
   },
   {
     title: 'AI NAP Checker',
     description: 'Automatically detect Name, Address, Phone inconsistencies across all directories and get AI-powered correction recommendations.',
     icon: '✅',
+    comingSoon: false,
   },
   {
     title: '49 UK Directories',
     description: 'Submit to Google Business, Yell, Thomson Local, Checkatrade, Trustpilot, and 49 UK-specific directories from one dashboard.',
     icon: '🇬🇧',
+    comingSoon: false,
   },
   {
     title: 'Automated Submissions',
     description: 'Set it and forget it. Our system handles directory submissions, monitors listing status, and alerts you to any issues.',
     icon: '⚡',
+    comingSoon: true,
   },
   {
     title: 'White-Label Dashboard',
     description: 'Give your clients their own branded portal to track citation progress, view reports, and see their local SEO improvements.',
     icon: '🏷️',
+    comingSoon: true,
   },
 ];
 
@@ -192,9 +198,16 @@ export default function LandingPage() {
           </div>
           <div className="mt-16 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
             {features.map((feature) => (
-              <div key={feature.title} className="card group transition-all hover:border-brand-500/30">
+              <div key={feature.title} className={`card group transition-all hover:border-brand-500/30 ${feature.comingSoon ? 'opacity-60' : ''}`}>
                 <div className="mb-4 text-3xl">{feature.icon}</div>
-                <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  {feature.title}
+                  {feature.comingSoon && (
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                      Coming Soon
+                    </span>
+                  )}
+                </h3>
                 <p className="mt-2 text-sm text-gray-400 leading-relaxed">{feature.description}</p>
               </div>
             ))}
