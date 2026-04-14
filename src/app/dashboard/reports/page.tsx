@@ -1,8 +1,44 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Client } from '@/types/database';
+
+// Lightweight markdown-to-HTML converter for AI-generated reports
+function markdownToHtml(md: string): string {
+  return md
+    // Escape HTML entities first
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    // Headings (### before ## before #)
+    .replace(/^### (.+)$/gm, '<h4 class="text-sm font-semibold text-white mt-4 mb-1">$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3 class="text-base font-semibold text-white mt-5 mb-1">$1</h3>')
+    .replace(/^# (.+)$/gm, '<h2 class="text-lg font-bold text-white mt-6 mb-2">$1</h2>')
+    // Bold and italic
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong class="text-white"><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white">$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Unordered list items (- or *)
+    .replace(/^[-*] (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
+    // Numbered list items
+    .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
+    // Horizontal rules
+    .replace(/^---$/gm, '<hr class="border-gray-700 my-3" />')
+    // Line breaks: preserve blank lines as spacing
+    .replace(/\n\n/g, '<br /><br />')
+    .replace(/\n/g, '<br />');
+}
+
+function RenderedMarkdown({ content }: { content: string }) {
+  const html = useMemo(() => markdownToHtml(content), [content]);
+  return (
+    <div
+      className="text-sm text-gray-300 leading-relaxed [&_li]:my-0.5"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
 
 interface ReportItem {
   id: string;
@@ -262,7 +298,7 @@ export default function ReportsPage() {
                 )}
               </button>
             </div>
-            <p className="text-sm text-gray-300 whitespace-pre-wrap">{generatedReport}</p>
+            <RenderedMarkdown content={generatedReport} />
           </div>
         )}
       </div>
@@ -334,7 +370,7 @@ export default function ReportsPage() {
                           )}
                         </button>
                       </div>
-                      <p className="text-sm text-gray-300 whitespace-pre-wrap">{report.summary}</p>
+                      <RenderedMarkdown content={report.summary} />
                     </div>
                   )}
                 </div>
