@@ -983,6 +983,13 @@ export async function POST(request: NextRequest) {
         client.phone
       );
 
+      // Google Business Profile cannot be verified via scraping — flag for manual check
+      if (domain === 'business.google.com' && result.status !== 'live') {
+        result.status = 'blocked';
+        result.reason = 'GBP status requires manual verification';
+        result.verificationMethod = 'manual_check_required';
+      }
+
       // Check if rate limit was hit during verification
       if (result.reason.includes('rate limit') || result.reason.includes('limit reached')) {
         rateLimitHit = true;
