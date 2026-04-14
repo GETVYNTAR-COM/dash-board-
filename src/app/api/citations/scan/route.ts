@@ -42,6 +42,10 @@ const STATUS_WORDING: Record<CitationStatus, string> = {
   blocked: 'directory check unavailable',
 };
 
+// ============================================================================
+// GOOGLE PLACES API (New) TYPES
+// ============================================================================
+
 interface GooglePlacesCandidate {
   place_id: string;
   name: string;
@@ -51,6 +55,44 @@ interface GooglePlacesCandidate {
   types?: string[];
   rating?: number;
   user_ratings_total?: number;
+}
+
+interface GooglePlacesNewPlace {
+  id: string;
+  displayName?: { text: string; languageCode?: string };
+  formattedAddress?: string;
+  nationalPhoneNumber?: string;
+  internationalPhoneNumber?: string;
+  businessStatus?: string;
+  types?: string[];
+  rating?: number;
+  userRatingCount?: number;
+  websiteUri?: string;
+  googleMapsUri?: string;
+  reviews?: Array<{
+    authorAttribution?: { displayName: string };
+    rating: number;
+    text?: { text: string };
+    publishTime?: string;
+  }>;
+  currentOpeningHours?: {
+    openNow?: boolean;
+    weekdayDescriptions?: string[];
+  };
+  addressComponents?: Array<{
+    longText: string;
+    shortText: string;
+    types: string[];
+  }>;
+}
+
+interface GooglePlacesNewSearchResponse {
+  places?: GooglePlacesNewPlace[];
+  error?: {
+    code: number;
+    message: string;
+    status: string;
+  };
 }
 
 interface GooglePlacesResponse {
@@ -878,35 +920,102 @@ export async function POST(request: NextRequest) {
     const directoryList = directories ?? [];
     console.log(`[Scan] Found ${directoryList.length} directories to check`);
 
-    // Search Google Places for the business (still works - separate from Custom Search)
+    // Search Google Places for the business using Places API (New)
     const googleApiKey = process.env.GOOGLE_PLACES_API_KEY;
     let googlePlacesData: GooglePlacesCandidate | null = null;
     let googlePlaceDetails: GooglePlaceDetails['result'] | null = null;
 
     if (googleApiKey) {
       try {
-        console.log('[Google Places] Searching for business...');
-        const searchQuery = encodeURIComponent(`${client.business_name} ${client.city} ${client.postcode}`);
-        const findPlaceUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${searchQuery}&inputtype=textquery&fields=place_id,name,formatted_address,formatted_phone_number,business_status,rating,user_ratings_total&key=${googleApiKey}`;
+        console.log('[Google Places] Searching for business via Places API (New)...');
+        const searchQuery = `${client.business_name} ${client.city} ${client.postcode}`;
 
-        const findResponse = await fetch(findPlaceUrl);
-        const findData: GooglePlacesResponse = await findResponse.json();
+        const fieldMask = [
+          'places.id',
+          'places.displayName',
+          'places.formattedAddress',
+          'places.nationalPhoneNumber',
+          'places.internationalPhoneNumber',
+          'places.businessStatus',
+          'places.types',
+          'places.rating',
+          'places.userRatingCount',
+          'places.websiteUri',
+          'places.googleMapsUri',
+          'places.reviews',
+          'places.currentOpeningHours',
+          'places.addressComponents',
+        ].join(',');
 
-        if (findData.status === 'OK' && findData.candidates.length > 0) {
-          googlePlacesData = findData.candidates[0];
-          console.log(`[Google Places] Found: ${googlePlacesData.name}`);
+        const searchUrl = 'https://places.googleapis.com/v1/places:searchText';
+        console.log(`[Google Places] Request: POST ${searchUrl} query="${searchQuery}"`);
 
-          const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${googlePlacesData.place_id}&fields=name,formatted_address,formatted_phone_number,international_phone_number,website,url,rating,user_ratings_total,reviews,opening_hours,address_components&key=${googleApiKey}`;
+        const searchResponse = await fetch(searchUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': googleApiKey,
+            'X-Goog-FieldMask': fieldMask,
+          },
+          body: JSON.stringify({ textQuery: searchQuery }),
+        });
 
-          const detailsResponse = await fetch(detailsUrl);
-          const detailsData: GooglePlaceDetails = await detailsResponse.json();
+        const searchResponseText = await searchResponse.text();
+        console.log(`[Google Places] Response status: ${searchResponse.status}`);
 
-          if (detailsData.status === 'OK') {
-            googlePlaceDetails = detailsData.result;
-            console.log(`[Google Places] Details retrieved successfully`);
-          }
+        if (!searchResponse.ok) {
+          console.error(`[Google Places] HTTP error ${searchResponse.status}: ${searchResponseText}`);
         } else {
-          console.log(`[Google Places] Business not found or API error: ${findData.status}`);
+          const searchData: GooglePlacesNewSearchResponse = JSON.parse(searchResponseText);
+
+          if (searchData.error) {
+            console.error(`[Google Places] API error: code=${searchData.error.code} status=${searchData.error.status} message=${searchData.error.message}`);
+          } else if (searchData.places && searchData.places.length > 0) {
+            const place = searchData.places[0];
+            console.log(`[Google Places] Found: ${place.displayName?.text} (id: ${place.id})`);
+
+            // Map new API response to legacy format for downstream compatibility
+            googlePlacesData = {
+              place_id: place.id,
+              name: place.displayName?.text || '',
+              formatted_address: place.formattedAddress || '',
+              formatted_phone_number: place.nationalPhoneNumber,
+              business_status: place.businessStatus,
+              types: place.types,
+              rating: place.rating,
+              user_ratings_total: place.userRatingCount,
+            };
+
+            googlePlaceDetails = {
+              name: place.displayName?.text || '',
+              formatted_address: place.formattedAddress || '',
+              formatted_phone_number: place.nationalPhoneNumber,
+              international_phone_number: place.internationalPhoneNumber,
+              website: place.websiteUri,
+              url: place.googleMapsUri,
+              rating: place.rating,
+              user_ratings_total: place.userRatingCount,
+              reviews: place.reviews?.map(r => ({
+                author_name: r.authorAttribution?.displayName || '',
+                rating: r.rating,
+                text: r.text?.text || '',
+                time: r.publishTime ? Math.floor(new Date(r.publishTime).getTime() / 1000) : 0,
+              })),
+              opening_hours: place.currentOpeningHours ? {
+                open_now: place.currentOpeningHours.openNow ?? false,
+                weekday_text: place.currentOpeningHours.weekdayDescriptions || [],
+              } : undefined,
+              address_components: place.addressComponents?.map(c => ({
+                long_name: c.longText,
+                short_name: c.shortText,
+                types: c.types,
+              })),
+            };
+
+            console.log(`[Google Places] Details retrieved successfully`);
+          } else {
+            console.log(`[Google Places] No results found for query: "${searchQuery}"`);
+          }
         }
       } catch (googleError) {
         console.error('[Google Places] API error:', googleError);
