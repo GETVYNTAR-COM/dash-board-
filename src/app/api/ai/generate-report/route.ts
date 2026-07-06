@@ -59,16 +59,40 @@ export async function POST(request: NextRequest) {
     }
 
     // Get citations with directory info
-    const { data: citations } = await supabase
+    const { data: citations, error: citationsError } = await supabase
       .from('citations')
       .select('*, directory:directories(name, tier, domain_authority)')
       .eq('client_id', clientId);
 
+    if (citationsError) {
+      console.error('Citations query failed:', citationsError);
+      return NextResponse.json(
+        {
+          error: `Database error loading citations: ${citationsError.message}`,
+          code: citationsError.code,
+          hint: citationsError.hint,
+        },
+        { status: 500 }
+      );
+    }
+
     // Get competitors
-    const { data: competitors } = await supabase
+    const { data: competitors, error: competitorsError } = await supabase
       .from('competitors')
       .select('*')
       .eq('client_id', clientId);
+
+    if (competitorsError) {
+      console.error('Competitors query failed:', competitorsError);
+      return NextResponse.json(
+        {
+          error: `Database error loading competitors: ${competitorsError.message}`,
+          code: competitorsError.code,
+          hint: competitorsError.hint,
+        },
+        { status: 500 }
+      );
+    }
 
     const allCitations = citations || [];
     const allCompetitors = competitors || [];
@@ -204,8 +228,18 @@ Keep it professional, concise, and client-friendly. Use UK English.`;
     });
   } catch (error) {
     console.error('Report generation error:', error);
+
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    // Only blame the API key when Anthropic actually rejected authentication
+    const isAnthropicAuthError =
+      error instanceof Anthropic.APIError && (error.status === 401 || error.status === 403);
+
     return NextResponse.json(
-      { error: 'Failed to generate report. Check CLAUDE_API_KEY.' },
+      {
+        error: isAnthropicAuthError
+          ? `Claude API authentication failed (${error.status}). Check CLAUDE_API_KEY.`
+          : `Failed to generate report: ${message}`,
+      },
       { status: 500 }
     );
   }

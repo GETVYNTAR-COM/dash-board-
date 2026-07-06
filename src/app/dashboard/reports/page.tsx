@@ -172,7 +172,7 @@ export default function ReportsPage() {
       }
     } catch (err) {
       console.error('[Report] Error:', err);
-      alert('Failed to generate report');
+      alert(`Failed to generate report: ${err instanceof Error ? err.message : 'network error'}`);
     } finally {
       setGenerationStep('idle');
     }
