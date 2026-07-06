@@ -96,6 +96,8 @@ export default function CitationsPage() {
     pending: 'text-gray-400 bg-gray-400/10',
     submitted: 'text-blue-400 bg-blue-400/10',
     live: 'text-emerald-400 bg-emerald-400/10',
+    not_found: 'text-red-400 bg-red-400/10',
+    blocked: 'text-amber-400 bg-amber-400/10',
     error: 'text-red-400 bg-red-400/10',
   };
 
@@ -166,9 +168,15 @@ export default function CitationsPage() {
                     {citation.client?.business_name || 'Unknown'}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusColors[citation.status] || ''}`}>
-                      {citation.status}
-                    </span>
+                    {citation.status === 'blocked' && citation.directory?.name === 'Google Business Profile' ? (
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusColors.blocked}`}>
+                        Manual verification needed
+                      </span>
+                    ) : (
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusColors[citation.status] || ''}`}>
+                        {citation.status === 'not_found' ? 'Not found' : citation.status}
+                      </span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     {citation.nap_consistent ? (
