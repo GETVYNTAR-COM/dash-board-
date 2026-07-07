@@ -188,7 +188,7 @@ Keep it professional, concise, and client-friendly. Use UK English.`;
     const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY });
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5',
       max_tokens: 3000,
       messages: [{ role: 'user', content: prompt }],
     });
