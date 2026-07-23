@@ -10,6 +10,9 @@ export default function ClientsPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [deletingClient, setDeletingClient] = useState<Client | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
     business_name: '',
     address: '',
@@ -58,6 +61,34 @@ export default function ClientsPage() {
     }
   }
 
+  function openEditForm(client: Client) {
+    setEditingClient(client);
+    setForm({
+      business_name: client.business_name,
+      address: client.address,
+      city: client.city,
+      postcode: client.postcode,
+      phone: client.phone,
+      category: client.category,
+      website: client.website || '',
+    });
+    setShowForm(true);
+    setError('');
+  }
+
+  function openAddForm() {
+    setEditingClient(null);
+    setForm({ business_name: '', address: '', city: '', postcode: '', phone: '', category: '', website: '' });
+    setShowForm(true);
+    setError('');
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setEditingClient(null);
+    setError('');
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -78,30 +109,86 @@ export default function ClientsPage() {
         return;
       }
 
-      const { error: insertError } = await supabase.from('clients').insert({
-        agency_id: agency.id,
-        business_name: form.business_name,
-        address: form.address,
-        city: form.city,
-        postcode: form.postcode.toUpperCase(),
-        phone: form.phone,
-        category: form.category,
-        website: form.website || null,
-        citation_score: 0,
-      });
+      if (editingClient) {
+        const { error: updateError } = await supabase
+          .from('clients')
+          .update({
+            business_name: form.business_name,
+            address: form.address,
+            city: form.city,
+            postcode: form.postcode.toUpperCase(),
+            phone: form.phone,
+            category: form.category,
+            website: form.website || null,
+          })
+          .eq('id', editingClient.id)
+          .eq('agency_id', agency.id);
 
-      if (insertError) {
-        setError(insertError.message);
+        if (updateError) {
+          setError(updateError.message);
+          return;
+        }
+      } else {
+        const { error: insertError } = await supabase.from('clients').insert({
+          agency_id: agency.id,
+          business_name: form.business_name,
+          address: form.address,
+          city: form.city,
+          postcode: form.postcode.toUpperCase(),
+          phone: form.phone,
+          category: form.category,
+          website: form.website || null,
+          citation_score: 0,
+        });
+
+        if (insertError) {
+          setError(insertError.message);
+          return;
+        }
+      }
+
+      closeForm();
+      loadClients();
+    } catch {
+      setError(editingClient ? 'Failed to update client' : 'Failed to add client');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deletingClient) return;
+    setDeleting(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: agency } = await supabase
+        .from('agencies')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!agency) return;
+
+      const { error: deleteError } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', deletingClient.id)
+        .eq('agency_id', agency.id);
+
+      if (deleteError) {
+        setError(deleteError.message);
         return;
       }
 
-      setForm({ business_name: '', address: '', city: '', postcode: '', phone: '', category: '', website: '' });
-      setShowForm(false);
+      setDeletingClient(null);
       loadClients();
     } catch {
-      setError('Failed to add client');
+      setError('Failed to delete client');
     } finally {
-      setSaving(false);
+      setDeleting(false);
     }
   }
 
@@ -209,18 +296,20 @@ export default function ClientsPage() {
             📄 Import CSV
           </a>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => showForm && !editingClient ? closeForm() : openAddForm()}
             className="btn-primary"
           >
-            {showForm ? 'Cancel' : '+ Add Client'}
+            {showForm && !editingClient ? 'Cancel' : '+ Add Client'}
           </button>
         </div>
       </div>
 
-      {/* Add Client Form */}
+      {/* Add / Edit Client Form */}
       {showForm && (
         <form onSubmit={handleSubmit} className="card space-y-4">
-          <h3 className="text-lg font-semibold text-white">Add New Client</h3>
+          <h3 className="text-lg font-semibold text-white">
+            {editingClient ? `Edit Client — ${editingClient.business_name}` : 'Add New Client'}
+          </h3>
 
           {error && (
             <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
@@ -308,14 +397,45 @@ export default function ClientsPage() {
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">
+            <button type="button" onClick={closeForm} className="btn-secondary">
               Cancel
             </button>
             <button type="submit" disabled={saving} className="btn-primary disabled:opacity-50">
-              {saving ? 'Adding...' : 'Add Client'}
+              {saving ? (editingClient ? 'Saving...' : 'Adding...') : (editingClient ? 'Save Changes' : 'Add Client')}
             </button>
           </div>
         </form>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="card mx-4 max-w-md space-y-4">
+            <h3 className="text-lg font-semibold text-white">Delete Client</h3>
+            <p className="text-sm text-gray-300">
+              Are you sure you want to delete <span className="font-medium text-white">{deletingClient.business_name}</span>?
+              This will also remove all associated citations, reports, and competitor data.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingClient(null)}
+                disabled={deleting}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete Client'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Clients List */}
@@ -328,7 +448,7 @@ export default function ClientsPage() {
           </div>
           <h3 className="text-lg font-semibold text-white">No clients yet</h3>
           <p className="mt-1 text-sm text-gray-400">Add your first client to start building citations.</p>
-          <button onClick={() => setShowForm(true)} className="btn-primary mt-4">
+          <button onClick={() => openAddForm()} className="btn-primary mt-4">
             + Add Your First Client
           </button>
         </div>
@@ -371,20 +491,34 @@ export default function ClientsPage() {
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
-                    <button
-                      onClick={() => handleScanClient(client.id)}
-                      disabled={scanningClient === client.id || bulkScanning}
-                      className="rounded-lg bg-brand-500/10 px-3 py-1.5 text-xs font-medium text-brand-400 hover:bg-brand-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {scanningClient === client.id ? (
-                        <span className="flex items-center gap-1.5">
-                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-400 border-t-transparent" />
-                          Scanning...
-                        </span>
-                      ) : (
-                        '🔍 Scan'
-                      )}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleScanClient(client.id)}
+                        disabled={scanningClient === client.id || bulkScanning}
+                        className="rounded-lg bg-brand-500/10 px-3 py-1.5 text-xs font-medium text-brand-400 hover:bg-brand-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {scanningClient === client.id ? (
+                          <span className="flex items-center gap-1.5">
+                            <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-400 border-t-transparent" />
+                            Scanning...
+                          </span>
+                        ) : (
+                          '🔍 Scan'
+                        )}
+                      </button>
+                      <button
+                        onClick={() => openEditForm(client)}
+                        className="rounded-lg bg-gray-700/50 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 transition-colors"
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        onClick={() => setDeletingClient(client)}
+                        className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
