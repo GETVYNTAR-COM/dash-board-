@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Client } from '@/types/database';
 
@@ -10,7 +10,8 @@ export default function ClientsPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [editingClientName, setEditingClientName] = useState('');
   const [deletingClient, setDeletingClient] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
@@ -27,6 +28,10 @@ export default function ClientsPage() {
   const [scanningClient, setScanningClient] = useState<string | null>(null);
   const [bulkScanning, setBulkScanning] = useState(false);
   const [bulkScanProgress, setBulkScanProgress] = useState({ current: 0, total: 0 });
+
+  // Ref so async scan callbacks always see the latest editing ID without re-renders
+  const editingClientIdRef = useRef<string | null>(null);
+  editingClientIdRef.current = editingClientId;
 
   const supabase = createClient();
 
@@ -62,7 +67,8 @@ export default function ClientsPage() {
   }
 
   function openEditForm(client: Client) {
-    setEditingClient(client);
+    setEditingClientId(client.id);
+    setEditingClientName(client.business_name);
     setForm({
       business_name: client.business_name,
       address: client.address,
@@ -77,7 +83,8 @@ export default function ClientsPage() {
   }
 
   function openAddForm() {
-    setEditingClient(null);
+    setEditingClientId(null);
+    setEditingClientName('');
     setForm({ business_name: '', address: '', city: '', postcode: '', phone: '', category: '', website: '' });
     setShowForm(true);
     setError('');
@@ -85,7 +92,8 @@ export default function ClientsPage() {
 
   function closeForm() {
     setShowForm(false);
-    setEditingClient(null);
+    setEditingClientId(null);
+    setEditingClientName('');
     setError('');
   }
 
@@ -109,7 +117,7 @@ export default function ClientsPage() {
         return;
       }
 
-      if (editingClient) {
+      if (editingClientId) {
         const { error: updateError } = await supabase
           .from('clients')
           .update({
@@ -121,7 +129,7 @@ export default function ClientsPage() {
             category: form.category,
             website: form.website || null,
           })
-          .eq('id', editingClient.id)
+          .eq('id', editingClientId)
           .eq('agency_id', agency.id);
 
         if (updateError) {
@@ -150,7 +158,7 @@ export default function ClientsPage() {
       closeForm();
       loadClients();
     } catch {
-      setError(editingClient ? 'Failed to update client' : 'Failed to add client');
+      setError(editingClientId ? 'Failed to update client' : 'Failed to add client');
     } finally {
       setSaving(false);
     }
@@ -296,10 +304,10 @@ export default function ClientsPage() {
             📄 Import CSV
           </a>
           <button
-            onClick={() => showForm && !editingClient ? closeForm() : openAddForm()}
+            onClick={() => showForm && !editingClientId ? closeForm() : openAddForm()}
             className="btn-primary"
           >
-            {showForm && !editingClient ? 'Cancel' : '+ Add Client'}
+            {showForm && !editingClientId ? 'Cancel' : '+ Add Client'}
           </button>
         </div>
       </div>
@@ -308,7 +316,7 @@ export default function ClientsPage() {
       {showForm && (
         <form onSubmit={handleSubmit} className="card space-y-4">
           <h3 className="text-lg font-semibold text-white">
-            {editingClient ? `Edit Client — ${editingClient.business_name}` : 'Add New Client'}
+            {editingClientId ? `Edit Client — ${editingClientName}` : 'Add New Client'}
           </h3>
 
           {error && (
@@ -401,7 +409,7 @@ export default function ClientsPage() {
               Cancel
             </button>
             <button type="submit" disabled={saving} className="btn-primary disabled:opacity-50">
-              {saving ? (editingClient ? 'Saving...' : 'Adding...') : (editingClient ? 'Save Changes' : 'Add Client')}
+              {saving ? (editingClientId ? 'Saving...' : 'Adding...') : (editingClientId ? 'Save Changes' : 'Add Client')}
             </button>
           </div>
         </form>
@@ -453,7 +461,7 @@ export default function ClientsPage() {
           </button>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-800">
+        <div className="overflow-x-auto rounded-xl border border-gray-800">
           <table className="w-full">
             <thead className="bg-gray-900/80">
               <tr>
@@ -466,62 +474,67 @@ export default function ClientsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {clients.map((client) => (
-                <tr key={client.id} className="transition-colors hover:bg-gray-900/50">
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <div className="font-medium text-white">{client.business_name}</div>
-                    {client.website && (
-                      <div className="text-xs text-gray-500">{client.website}</div>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
-                    {client.city}, {client.postcode}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-300">
-                      {client.category}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
-                    {client.phone}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${getScoreColor(client.citation_score)}`}>
-                      {client.citation_score}%
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleScanClient(client.id)}
-                        disabled={scanningClient === client.id || bulkScanning}
-                        className="rounded-lg bg-brand-500/10 px-3 py-1.5 text-xs font-medium text-brand-400 hover:bg-brand-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {scanningClient === client.id ? (
-                          <span className="flex items-center gap-1.5">
-                            <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-400 border-t-transparent" />
-                            Scanning...
-                          </span>
-                        ) : (
-                          '🔍 Scan'
-                        )}
-                      </button>
-                      <button
-                        onClick={() => openEditForm(client)}
-                        className="rounded-lg bg-gray-700/50 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 transition-colors"
-                      >
-                        ✏️ Edit
-                      </button>
-                      <button
-                        onClick={() => setDeletingClient(client)}
-                        className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
-                      >
-                        🗑️ Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {clients.map((client) => {
+                const isBeingEdited = editingClientId === client.id;
+                return (
+                  <tr key={client.id} className="transition-colors hover:bg-gray-900/50">
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <div className="font-medium text-white">{client.business_name}</div>
+                      {client.website && (
+                        <div className="text-xs text-gray-500">{client.website}</div>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
+                      {client.city}, {client.postcode}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <span className="rounded-full bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-300">
+                        {client.category}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-300">
+                      {client.phone}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${getScoreColor(client.citation_score)}`}>
+                        {client.citation_score}%
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleScanClient(client.id)}
+                          disabled={scanningClient === client.id || bulkScanning || isBeingEdited}
+                          className="rounded-lg bg-brand-500/10 px-3 py-1.5 text-xs font-medium text-brand-400 hover:bg-brand-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {scanningClient === client.id ? (
+                            <span className="flex items-center gap-1.5">
+                              <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-400 border-t-transparent" />
+                              Scanning...
+                            </span>
+                          ) : (
+                            '🔍 Scan'
+                          )}
+                        </button>
+                        <button
+                          onClick={() => openEditForm(client)}
+                          disabled={isBeingEdited}
+                          className="rounded-lg bg-gray-700/50 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {isBeingEdited ? '✏️ Editing...' : '✏️ Edit'}
+                        </button>
+                        <button
+                          onClick={() => setDeletingClient(client)}
+                          disabled={isBeingEdited}
+                          className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
