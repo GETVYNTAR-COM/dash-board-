@@ -20,6 +20,7 @@ interface DirectoryScanResult {
   reason: string;
   listingUrl: string | null;
   verificationMethod: string;
+  matchDetails: string[];
 }
 
 interface ScanSummary {
@@ -185,57 +186,76 @@ async function scrapeWithFirecrawl(url: string): Promise<{ success: boolean; mar
   }
 }
 
-// Check if business name appears in scraped content
+// Check if business listing exists in scraped content.
+// Requires name match PLUS corroboration from at least one NAP element
+// because scraped search-results pages always echo the query text.
 function detectBusinessInContent(
   markdown: string,
   businessName: string,
   phone?: string,
-  postcode?: string
-): { found: boolean; confidence: 'high' | 'medium' | 'low'; reason: string } {
+  postcode?: string,
+  address?: string
+): { found: boolean; confidence: 'high' | 'medium' | 'low'; reason: string; matchDetails: string[] } {
   const normalizedContent = markdown.toLowerCase();
   const normalizedName = normaliseName(businessName);
   const nameWords = normalizedName.split(' ').filter(w => w.length > 2);
+  const matchDetails: string[] = [];
 
-  // Check for exact business name match
+  // --- detect each signal independently ---
+
+  let nameFound = false;
+  let phoneFound = false;
+  let postcodeFound = false;
+  let addressFound = false;
+
+  // Name
   if (normalizedContent.includes(businessName.toLowerCase())) {
-    return { found: true, confidence: 'high', reason: 'Exact business name match found' };
-  }
-
-  // Check for normalized name match
-  if (normalizedContent.includes(normalizedName)) {
-    return { found: true, confidence: 'high', reason: 'Normalized business name match found' };
-  }
-
-  // Check for phone number match (strong signal)
-  if (phone) {
-    const normalizedPhone = normalisePhone(phone);
-    const phoneInContent = normalizedContent.replace(/\D/g, '');
-    if (normalizedPhone.length >= 10 && phoneInContent.includes(normalizedPhone)) {
-      return { found: true, confidence: 'high', reason: 'Phone number match found' };
+    nameFound = true;
+    matchDetails.push(`Exact name "${businessName}" in content`);
+  } else if (normalizedContent.includes(normalizedName)) {
+    nameFound = true;
+    matchDetails.push(`Normalized name "${normalizedName}" in content`);
+  } else if (nameWords.length >= 2) {
+    const matched = nameWords.filter(w => normalizedContent.includes(w));
+    if (matched.length >= Math.ceil(nameWords.length * 0.8)) {
+      nameFound = true;
+      matchDetails.push(`${matched.length}/${nameWords.length} name words in content`);
     }
   }
 
-  // Check for postcode match combined with partial name match
+  // Phone
+  if (phone) {
+    const normalizedPhone = normalisePhone(phone);
+    const contentDigits = normalizedContent.replace(/\D/g, '');
+    if (normalizedPhone.length >= 10 && contentDigits.includes(normalizedPhone)) {
+      phoneFound = true;
+      matchDetails.push('Phone digits matched in content');
+    }
+  }
+
+  // Postcode
   if (postcode) {
     const normalizedPostcode = postcode.toLowerCase().replace(/\s/g, '');
-    const postcodeFound = normalizedContent.replace(/\s/g, '').includes(normalizedPostcode);
+    if (normalizedContent.replace(/\s/g, '').includes(normalizedPostcode)) {
+      postcodeFound = true;
+      matchDetails.push(`Postcode ${postcode} found in content`);
+    }
+  }
 
-    if (postcodeFound) {
-      // Count how many name words appear
-      const matchedWords = nameWords.filter(word => normalizedContent.includes(word));
-      if (matchedWords.length >= Math.ceil(nameWords.length * 0.6)) {
-        return { found: true, confidence: 'medium', reason: 'Postcode and partial name match found' };
+  // Address fragment
+  if (address) {
+    const addrWords = normaliseAddress(address).split(' ').filter(w => w.length > 2);
+    if (addrWords.length >= 2) {
+      const normalizedCombined = normaliseAddress(normalizedContent);
+      const matchedAddr = addrWords.filter(w => normalizedCombined.includes(w));
+      if (matchedAddr.length >= Math.ceil(addrWords.length * 0.6)) {
+        addressFound = true;
+        matchDetails.push(`Address fragment matched (${matchedAddr.length}/${addrWords.length} words)`);
       }
     }
   }
 
-  // Check for majority of business name words
-  const matchedWords = nameWords.filter(word => normalizedContent.includes(word));
-  if (nameWords.length >= 2 && matchedWords.length >= Math.ceil(nameWords.length * 0.8)) {
-    return { found: true, confidence: 'low', reason: 'Majority of business name words found' };
-  }
-
-  // Check for "no results" indicators
+  // --- "no results" detection (before corroboration gate) ---
   const noResultsIndicators = [
     'no results found',
     'no businesses found',
@@ -245,14 +265,36 @@ function detectBusinessInContent(
     'no listings found',
     'try a different search',
   ];
-
   for (const indicator of noResultsIndicators) {
     if (normalizedContent.includes(indicator)) {
-      return { found: false, confidence: 'high', reason: 'No results indicator found on page' };
+      return { found: false, confidence: 'high', reason: 'No results indicator found on page', matchDetails: ['Page contains "no results" indicator'] };
     }
   }
 
-  return { found: false, confidence: 'medium', reason: 'Business name not detected in content' };
+  // --- corroboration gate ---
+  // Name + phone → high (live)
+  if (nameFound && phoneFound) {
+    return { found: true, confidence: 'high', reason: 'Name + phone corroborated in content', matchDetails };
+  }
+  // Name + postcode → high (live)
+  if (nameFound && postcodeFound) {
+    return { found: true, confidence: 'high', reason: 'Name + postcode corroborated in content', matchDetails };
+  }
+  // Name + address → medium (possible_match)
+  if (nameFound && addressFound) {
+    return { found: true, confidence: 'medium', reason: 'Name + address fragment in content', matchDetails };
+  }
+  // Phone alone is a strong signal even without name
+  if (phoneFound) {
+    return { found: true, confidence: 'medium', reason: 'Phone found in content without name corroboration', matchDetails };
+  }
+  // Name alone — search pages echo the query so this proves nothing
+  if (nameFound) {
+    matchDetails.push('Name found but no NAP corroboration (search pages echo query text)');
+    return { found: false, confidence: 'low', reason: 'Name found without NAP corroboration', matchDetails };
+  }
+
+  return { found: false, confidence: 'medium', reason: 'Business not detected in content', matchDetails };
 }
 
 // ============================================================================
@@ -336,7 +378,7 @@ async function searchWithSerpApi(
     if (results.length > 0) {
       // Prefer results that contain the business name in title
       const nameMatch = results.find(r =>
-        r.title.toLowerCase().includes(businessName.toLowerCase().split(' ')[0])
+        r.title.toLowerCase().includes(businessName.toLowerCase())
       );
       listingUrl = nameMatch?.link || results[0]?.link || null;
     }
@@ -350,83 +392,142 @@ async function searchWithSerpApi(
   }
 }
 
-// Analyze SerpAPI results to determine if business is listed
+// Analyze SerpAPI results to determine if business is listed.
+// Requires name match PLUS corroboration from at least one NAP element
+// for high confidence (live). Name alone → medium (possible_match).
 function analyzeSerpResults(
   results: SerpApiResult[],
   businessName: string,
   phone?: string,
-  postcode?: string
-): { found: boolean; confidence: 'high' | 'medium' | 'low'; reason: string; listingUrl: string | null } {
+  postcode?: string,
+  address?: string
+): { found: boolean; confidence: 'high' | 'medium' | 'low'; reason: string; listingUrl: string | null; matchDetails: string[] } {
   if (results.length === 0) {
-    return { found: false, confidence: 'high', reason: 'No search results found on directory', listingUrl: null };
+    return { found: false, confidence: 'high', reason: 'No search results found on directory', listingUrl: null, matchDetails: [] };
   }
 
   const normalizedName = normaliseName(businessName);
   const nameWords = normalizedName.split(' ').filter(w => w.length > 2);
 
+  // Track the best uncorroborated name match so we can return it as possible_match
+  let bestNameOnly: { reason: string; listingUrl: string; matchDetails: string[] } | null = null;
+
   for (const result of results) {
     const titleLower = result.title.toLowerCase();
     const snippetLower = (result.snippet || '').toLowerCase();
     const combined = `${titleLower} ${snippetLower}`;
+    const matchDetails: string[] = [];
 
-    // Check for exact business name in title (high confidence)
+    // --- detect each signal ---
+
+    let nameInTitle = false;
+    let partialNameMatch = false;
+    let phoneMatch = false;
+    let postcodeMatch = false;
+    let addressMatch = false;
+
+    // Name in title (exact or normalized)
     if (titleLower.includes(businessName.toLowerCase())) {
-      return {
-        found: true,
-        confidence: 'high',
-        reason: 'Exact business name found in search result title',
-        listingUrl: result.link
-      };
+      nameInTitle = true;
+      matchDetails.push(`Exact name in title: "${result.title}"`);
+    } else if (titleLower.includes(normalizedName) && normalizedName.length > 3) {
+      nameInTitle = true;
+      matchDetails.push(`Normalized name in title: "${result.title}"`);
     }
 
-    // Check for phone number in snippet (high confidence)
+    // Partial name words in combined title+snippet
+    if (!nameInTitle && nameWords.length >= 2) {
+      const matched = nameWords.filter(w => combined.includes(w));
+      if (matched.length >= Math.ceil(nameWords.length * 0.8)) {
+        partialNameMatch = true;
+        matchDetails.push(`${matched.length}/${nameWords.length} name words in result`);
+      }
+    }
+
+    const nameFound = nameInTitle || partialNameMatch;
+
+    // Phone in snippet
     if (phone) {
       const normalizedPhone = normalisePhone(phone);
       const snippetDigits = snippetLower.replace(/\D/g, '');
       if (normalizedPhone.length >= 10 && snippetDigits.includes(normalizedPhone)) {
-        return {
-          found: true,
-          confidence: 'high',
-          reason: 'Phone number found in search result',
-          listingUrl: result.link
-        };
+        phoneMatch = true;
+        matchDetails.push('Phone digits matched in snippet');
       }
     }
 
-    // Check for postcode + partial name match (medium confidence)
+    // Postcode in combined
     if (postcode) {
       const normalizedPostcode = postcode.toLowerCase().replace(/\s/g, '');
       if (combined.replace(/\s/g, '').includes(normalizedPostcode)) {
-        const matchedWords = nameWords.filter(word => combined.includes(word));
-        if (matchedWords.length >= Math.ceil(nameWords.length * 0.5)) {
-          return {
-            found: true,
-            confidence: 'medium',
-            reason: 'Postcode and partial business name found in search results',
-            listingUrl: result.link
-          };
+        postcodeMatch = true;
+        matchDetails.push(`Postcode ${postcode} found in result`);
+      }
+    }
+
+    // Address fragment in combined
+    if (address) {
+      const addrWords = normaliseAddress(address).split(' ').filter(w => w.length > 2);
+      if (addrWords.length >= 2) {
+        const normalizedCombined = normaliseAddress(combined);
+        const matchedAddr = addrWords.filter(w => normalizedCombined.includes(w));
+        if (matchedAddr.length >= Math.ceil(addrWords.length * 0.6)) {
+          addressMatch = true;
+          matchDetails.push(`Address fragment matched in result`);
         }
       }
     }
 
-    // Check for majority of business name words (medium confidence)
-    const matchedWords = nameWords.filter(word => combined.includes(word));
-    if (nameWords.length >= 2 && matchedWords.length >= Math.ceil(nameWords.length * 0.7)) {
-      return {
-        found: true,
-        confidence: 'medium',
-        reason: 'Majority of business name words found in search results',
-        listingUrl: result.link
+    // --- corroboration gate ---
+
+    // Name + phone → high
+    if (nameFound && phoneMatch) {
+      return { found: true, confidence: 'high', reason: 'Name + phone corroborated in search result', listingUrl: result.link, matchDetails };
+    }
+    // Name + postcode → high
+    if (nameFound && postcodeMatch) {
+      return { found: true, confidence: 'high', reason: 'Name + postcode corroborated in search result', listingUrl: result.link, matchDetails };
+    }
+    // Name + address → high
+    if (nameFound && addressMatch) {
+      return { found: true, confidence: 'high', reason: 'Name + address corroborated in search result', listingUrl: result.link, matchDetails };
+    }
+    // Phone match with partial name → high
+    if (phoneMatch && partialNameMatch) {
+      return { found: true, confidence: 'high', reason: 'Phone + partial name in search result', listingUrl: result.link, matchDetails };
+    }
+    // Phone alone → medium (phone is a strong unique signal)
+    if (phoneMatch) {
+      return { found: true, confidence: 'medium', reason: 'Phone found in search result without name corroboration', listingUrl: result.link, matchDetails };
+    }
+
+    // Track best name-only match for possible_match fallback
+    if (nameInTitle && !bestNameOnly) {
+      bestNameOnly = {
+        reason: 'Name found in title but no NAP corroboration',
+        listingUrl: result.link,
+        matchDetails: [...matchDetails, 'No phone/postcode/address corroboration'],
       };
     }
   }
 
-  // Results exist but no strong match
+  // Name in title without corroboration → possible_match
+  if (bestNameOnly) {
+    return {
+      found: true,
+      confidence: 'medium',
+      reason: bestNameOnly.reason,
+      listingUrl: bestNameOnly.listingUrl,
+      matchDetails: bestNameOnly.matchDetails,
+    };
+  }
+
   return {
     found: false,
     confidence: 'medium',
     reason: 'Search results found but no confident match to business',
-    listingUrl: null
+    listingUrl: null,
+    matchDetails: [],
   };
 }
 
@@ -634,13 +735,19 @@ function checkNAPConsistency(
   return { isConsistent, nameMatch, addressMatch: postcodeInGoogle ? 100 : addressMatch, phoneMatch, details };
 }
 
-// Domains known to cause false positives — not business directories
+// Domains that are not general business directories — matching on these
+// almost always produces false positives (sector-specific, social, etc.)
 const FALSE_POSITIVE_BLOCKLIST = new Set([
   'nhs.uk',
   'lawsociety.org.uk',
   'icaew.com',
   'zoopla.co.uk',
   'tripadvisor.com',
+  'tripadvisor.co.uk',
+  'opentable.co.uk',
+  'opentable.com',
+  'youtube.com',
+  'goodgaragescheme.com',
 ]);
 
 // ============================================================================
@@ -657,7 +764,8 @@ async function verifyDirectory(
   directoryName: string,
   city?: string,
   postcode?: string,
-  phone?: string
+  phone?: string,
+  address?: string
 ): Promise<DirectoryScanResult> {
   const baseResult: DirectoryScanResult = {
     directoryId,
@@ -667,6 +775,7 @@ async function verifyDirectory(
     reason: '',
     listingUrl: null,
     verificationMethod: 'none',
+    matchDetails: [],
   };
 
   try {
@@ -675,6 +784,7 @@ async function verifyDirectory(
       baseResult.status = 'not_found';
       baseResult.reason = 'Directory is not a business listing site';
       baseResult.verificationMethod = 'blocklist';
+      baseResult.matchDetails = ['Skipped: domain is on false-positive blocklist'];
       console.log(`[Directory Scan] ${directoryName} (${domain}): skipped (blocklisted)`);
       return baseResult;
     }
@@ -705,13 +815,14 @@ async function verifyDirectory(
 
       if (serpResult.success && serpResult.results.length > 0) {
         // Analyze SerpAPI results
-        const analysis = analyzeSerpResults(serpResult.results, businessName, phone, postcode);
+        const analysis = analyzeSerpResults(serpResult.results, businessName, phone, postcode, address);
 
         if (analysis.found) {
           baseResult.status = analysis.confidence === 'high' ? 'live' : 'possible_match';
           baseResult.reason = analysis.reason;
           baseResult.listingUrl = analysis.listingUrl;
           baseResult.verificationMethod = 'serpapi';
+          baseResult.matchDetails = analysis.matchDetails;
 
           console.log(`[Directory Scan] ${directoryName} (${domain}): status=${baseResult.status}, reason="${baseResult.reason}"`);
           return baseResult;
@@ -720,6 +831,7 @@ async function verifyDirectory(
           baseResult.status = 'not_found';
           baseResult.reason = analysis.reason;
           baseResult.verificationMethod = 'serpapi';
+          baseResult.matchDetails = analysis.matchDetails;
 
           console.log(`[Directory Scan] ${directoryName} (${domain}): status=${baseResult.status}, reason="${baseResult.reason}"`);
           return baseResult;
@@ -756,7 +868,8 @@ async function verifyDirectory(
           scrapeResult.markdown,
           businessName,
           phone,
-          postcode
+          postcode,
+          address
         );
 
         if (detection.found) {
@@ -769,6 +882,7 @@ async function verifyDirectory(
         }
 
         baseResult.verificationMethod = 'firecrawl';
+        baseResult.matchDetails = detection.matchDetails;
       }
     } else if (!directoryConfig.serpApiSupported) {
       // No methods available
@@ -790,6 +904,7 @@ async function verifyDirectory(
       status: 'blocked',
       reason: `Error during verification: ${errorMessage}`,
       verificationMethod: 'error',
+      matchDetails: [`Exception: ${errorMessage}`],
     };
   }
 }
@@ -797,22 +912,24 @@ async function verifyDirectory(
 // ============================================================================
 // CITATION SCORE CALCULATION
 // ============================================================================
-// Formula:
-// score = (live_count / total_directories) * 100
+// Formula: live_count / (total - blocked) * 100
+// Blocked directories are excluded from the denominator so that transient
+// network errors or rate limits do not deflate the score.
 // ============================================================================
 
 function calculateCitationScore(results: DirectoryScanResult[]): number {
   const liveCount = results.filter(r => r.status === 'live').length;
-  const totalDirectories = results.length;
+  const blockedCount = results.filter(r => r.status === 'blocked').length;
+  const scoredCount = results.length - blockedCount;
 
-  if (totalDirectories <= 0) {
-    console.log('[Score] No directories to score, returning 0');
+  if (scoredCount <= 0) {
+    console.log('[Score] No scoreable directories (all blocked), returning 0');
     return 0;
   }
 
-  const score = Math.round((liveCount / totalDirectories) * 100);
+  const score = Math.round((liveCount / scoredCount) * 100);
 
-  console.log(`[Score] Calculation: (${liveCount} / ${totalDirectories}) * 100 = ${score}%`);
+  console.log(`[Score] ${liveCount} live / ${scoredCount} scoreable (${results.length} total - ${blockedCount} blocked) = ${score}%`);
 
   return score;
 }
@@ -849,8 +966,9 @@ function logDirectoryResult(result: DirectoryScanResult): void {
 
   const emoji = statusEmoji[result.status];
   const urlInfo = result.listingUrl ? ` -> ${result.listingUrl}` : '';
+  const details = result.matchDetails.length > 0 ? ` [${result.matchDetails.join('; ')}]` : '';
 
-  console.log(`[Directory] ${emoji} ${result.directoryName} (${result.domain}): ${result.status} - ${result.reason}${urlInfo}`);
+  console.log(`[Directory] ${emoji} ${result.directoryName} (${result.domain}): ${result.status} - ${result.reason}${urlInfo}${details}`);
 }
 
 // Scan cooldown: prevent re-scanning same client within 5 minutes
@@ -1077,6 +1195,7 @@ export async function POST(request: NextRequest) {
           reason: 'Skipped due to API rate limit',
           listingUrl: null,
           verificationMethod: 'skipped',
+          matchDetails: [],
         });
         continue;
       }
@@ -1089,7 +1208,8 @@ export async function POST(request: NextRequest) {
         directory.name,
         client.city,
         client.postcode,
-        client.phone
+        client.phone,
+        client.address
       );
 
       // Google Business Profile cannot be verified via scraping — flag for manual check
@@ -1207,6 +1327,8 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     // BUILD RESPONSE
     // ========================================================================
+    const scoredCount = directoryList.length - blockedCount;
+
     return NextResponse.json({
       success: true,
       client: {
@@ -1253,13 +1375,13 @@ export async function POST(request: NextRequest) {
       },
       citation_score: {
         value: citationScore,
-        formula: '((live * 1) + (possible_match * 0.5)) / (total - blocked) * 100',
+        formula: 'live_count / (total - blocked) * 100',
         calculation: {
           live: liveCount,
           possible_match: possibleMatchCount,
           not_found: notFoundCount,
           blocked: blockedCount,
-          denominator: directoryList.length - blockedCount,
+          denominator: scoredCount,
         },
       },
       directory_results: scanResults.map(r => ({
@@ -1270,9 +1392,10 @@ export async function POST(request: NextRequest) {
         reason: r.reason,
         listing_url: r.listingUrl,
         verification_method: r.verificationMethod,
+        match_details: r.matchDetails,
       })),
       scan_info: {
-        method: 'serpapi_firecrawl_v1',
+        method: 'serpapi_firecrawl_v2',
         serpapi_enabled: Boolean(process.env.SERP_API_KEY),
         firecrawl_enabled: Boolean(process.env.FIRECRAWL_API_KEY),
         google_places_enabled: Boolean(googleApiKey),
