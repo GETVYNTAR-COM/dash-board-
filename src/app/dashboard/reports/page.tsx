@@ -58,6 +58,7 @@ export default function ReportsPage() {
   const [generationStep, setGenerationStep] = useState<GenerationStep>('idle');
   const [loading, setLoading] = useState(true);
   const [generatedReport, setGeneratedReport] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [expandedReports, setExpandedReports] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const supabase = createClient();
@@ -107,6 +108,7 @@ export default function ReportsPage() {
     if (!selectedClient) return;
     setGenerationStep('scanning');
     setGeneratedReport(null);
+    setScanError(null);
 
     try {
       // Step 1: Run citation scan first
@@ -118,13 +120,26 @@ export default function ReportsPage() {
       });
 
       const scanData = await scanRes.json();
-      if (!scanRes.ok || scanData.error) {
-        // If cooldown error, continue to report generation with existing data
-        if (scanData.error !== 'cooldown') {
-          console.error('[Report] Scan failed:', scanData.error || scanData.message);
-        } else {
-          console.log('[Report] Scan on cooldown, using existing citation data');
-        }
+      const isCooldown = scanData.error === 'cooldown';
+      // A genuine failure = non-OK response OR an explicit success:false OR any
+      // error that isn't the benign cooldown. We check the actual persistence
+      // result, not just the HTTP status.
+      const scanFailed =
+        (!scanRes.ok || scanData.success === false || scanData.error) && !isCooldown;
+
+      if (scanFailed) {
+        // Refuse to generate a report off a scan that did not genuinely persist.
+        // This is what previously produced empty "completed" reports.
+        const detail =
+          scanData.db_error?.message || scanData.error || scanData.message || 'Scan failed';
+        console.error('[Report] Scan did not succeed, aborting report generation:', scanData);
+        setScanError(`Scan failed — report not generated: ${detail}`);
+        setGenerationStep('idle');
+        return;
+      }
+
+      if (isCooldown) {
+        console.log('[Report] Scan on cooldown, using existing citation data');
       } else {
         console.log('[Report] Scan complete:', {
           live: scanData.citations?.live_count,
@@ -272,6 +287,20 @@ export default function ReportsPage() {
             </button>
           </div>
         </div>
+
+        {scanError && (
+          <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-4">
+            <div className="flex items-start gap-2">
+              <svg className="h-5 w-5 flex-shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-red-400">Report not generated</p>
+                <p className="mt-1 text-sm text-red-300/80">{scanError}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {generatedReport && (
           <div className="rounded-lg bg-gray-800/50 border border-gray-700 p-4">

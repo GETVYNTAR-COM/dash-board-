@@ -1199,10 +1199,35 @@ export async function POST(request: NextRequest) {
       .eq('id', clientId);
 
     if (clientUpdateError) {
-      console.error('[Scan] Failed to update client:', clientUpdateError);
-    } else {
-      console.log(`[Scan] Client citation score updated to ${citationScore}%`);
+      // Surface the REAL Postgres error, not a generic "it failed".
+      // The code identifies the class: 22P02/22003 = type/numeric mismatch,
+      // 42501 = permission/RLS, 42703 = column does not exist.
+      console.error('[Scan] Failed to persist client citation score:', {
+        message: clientUpdateError.message,
+        code: clientUpdateError.code,
+        details: clientUpdateError.details,
+        hint: clientUpdateError.hint,
+        attemptedUpdate: updateData,
+      });
+      // Do NOT report success when the write did not land — a report generated
+      // off this would be an empty "completed" report.
+      return NextResponse.json(
+        {
+          success: false,
+          persisted: false,
+          error: 'Scan ran but its results could not be saved to the database',
+          db_error: {
+            message: clientUpdateError.message,
+            code: clientUpdateError.code,
+            details: clientUpdateError.details,
+            hint: clientUpdateError.hint,
+          },
+        },
+        { status: 500 }
+      );
     }
+
+    console.log(`[Scan] Client citation score updated to ${citationScore}%`);
 
     // ========================================================================
     // BUILD RESPONSE
