@@ -195,6 +195,15 @@ Keep it professional, concise, and client-friendly. Use UK English.`;
 
     const summary = message.content[0].type === 'text' ? message.content[0].text : '';
 
+    // Never persist an empty report as "completed".
+    if (!summary.trim()) {
+      console.error('Report generation produced an empty summary; not saving.');
+      return NextResponse.json(
+        { error: 'Report generation produced no content — nothing was saved.' },
+        { status: 502 }
+      );
+    }
+
     // Save report to database
     const { data: report, error: reportError } = await supabase
       .from('reports')
