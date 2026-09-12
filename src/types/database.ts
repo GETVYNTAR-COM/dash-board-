@@ -1,5 +1,15 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
+export type CitationRowStatus =
+  | 'live'
+  | 'possible_match'
+  | 'not_found'
+  | 'cannot_verify'
+  | 'pending'
+  | 'submitted'
+  | 'error'
+  | 'blocked';
+
 export interface Database {
   public: {
     Tables: {
@@ -109,12 +119,19 @@ export interface Database {
         };
       };
       citations: {
+        // 'blocked' is the legacy spelling of 'cannot_verify' and is kept for
+        // rows written before migration 003. nap_consistent is null wherever
+        // NAP was not evaluated — it is never false by default.
         Row: {
           id: string;
           client_id: string;
           directory_id: string;
-          status: 'pending' | 'submitted' | 'live' | 'error';
-          nap_consistent: boolean;
+          status: CitationRowStatus;
+          nap_consistent: boolean | null;
+          listing_url: string | null;
+          verification_method: string | null;
+          verification_reason: string | null;
+          verified_at: string | null;
           submitted_at: string | null;
           live_at: string | null;
           created_at: string;
@@ -123,8 +140,12 @@ export interface Database {
           id?: string;
           client_id: string;
           directory_id: string;
-          status?: 'pending' | 'submitted' | 'live' | 'error';
-          nap_consistent?: boolean;
+          status?: CitationRowStatus;
+          nap_consistent?: boolean | null;
+          listing_url?: string | null;
+          verification_method?: string | null;
+          verification_reason?: string | null;
+          verified_at?: string | null;
           submitted_at?: string | null;
           live_at?: string | null;
           created_at?: string;
@@ -133,8 +154,12 @@ export interface Database {
           id?: string;
           client_id?: string;
           directory_id?: string;
-          status?: 'pending' | 'submitted' | 'live' | 'error';
-          nap_consistent?: boolean;
+          status?: CitationRowStatus;
+          nap_consistent?: boolean | null;
+          listing_url?: string | null;
+          verification_method?: string | null;
+          verification_reason?: string | null;
+          verified_at?: string | null;
           submitted_at?: string | null;
           live_at?: string | null;
         };

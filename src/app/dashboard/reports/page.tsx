@@ -143,8 +143,10 @@ export default function ReportsPage() {
       } else {
         console.log('[Report] Scan complete:', {
           live: scanData.citations?.live_count,
-          notFound: scanData.citations?.not_found_count,
-          blocked: scanData.citations?.blocked_count,
+          possibleMatch: scanData.citations?.possible_match_count,
+          missing: scanData.citations?.missing_count,
+          couldNotCheck: scanData.citations?.cannot_verify_count,
+          excludedAsIrrelevant: scanData.citations?.excluded_count,
         });
       }
 

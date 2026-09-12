@@ -10,7 +10,8 @@
     "lint": "next lint",
     "test": "node --test tests/dashboard.test.js",
     "db:migrate": "node scripts/migrate.mjs",
-    "db:seed": "node scripts/seed-directories.mjs"
+    "db:seed": "node scripts/seed-directories.mjs",
+    "test:citations": "node --test tests/citation-evidence.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
