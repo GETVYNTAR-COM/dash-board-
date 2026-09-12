@@ -1,0 +1,91 @@
+# Pre-install security scan for third-party agent skills and MCP tools.
+#
+# Run it from the browser (Actions -> "Scan a skill before install" -> Run
+# workflow) and paste the skill's git URL. Nothing is installed on your machine;
+# the scan happens on a throwaway runner, so a hostile skill is cloned there and
+# not onto the MacBook.
+#
+# ADVISORY, NOT CLEARANCE. SkillSpector is alpha-stage heuristics: a clean
+# report is absence of evidence, not evidence of safety. Read the findings and
+# decide. Do not treat a pass as permission.
+#
+# Static analysis only (--no-llm): no API key, no cost, and the skill's contents
+# are never sent to an LLM provider. The scan does query OSV.dev for CVEs in any
+# dependencies the skill declares.
+#
+# Pinned to the commit that NVIDIA tagged v2.11.2. A tag can be moved; a commit
+# cannot. To upgrade, replace the SHA and the version in the comment below.
+
+name: Scan a skill before install
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Git URL of the skill to scan, or a path inside this repo"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Checked out so a path inside this repo can be scanned as well as a URL.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SkillSpector (pinned, isolated venv)
+        run: |
+          python -m venv "$RUNNER_TEMP/skillspector"
+          "$RUNNER_TEMP/skillspector/bin/pip" install --quiet --disable-pip-version-check \
+            "skillspector @ git+https://github.com/NVIDIA/skillspector.git@69dcdfb74487d361ba4c811d088cfdea2ff3a9dc"
+          "$RUNNER_TEMP/skillspector/bin/skillspector" --version
+
+      # continue-on-error so the report is still published when the scanner
+      # exits 1 (its "DO_NOT_INSTALL" signal) — the report is the point.
+      - name: Scan
+        id: scan
+        continue-on-error: true
+        env:
+          # Passed as an environment variable, never interpolated into the
+          # shell, so a pasted value cannot inject commands.
+          TARGET: ${{ inputs.target }}
+        run: |
+          "$RUNNER_TEMP/skillspector/bin/skillspector" scan "$TARGET" --no-llm --format markdown -o report.md
+
+      - name: Publish report
+        if: always()
+        env:
+          TARGET: ${{ inputs.target }}
+          OUTCOME: ${{ steps.scan.outcome }}
+        run: |
+          {
+            echo "## SkillSpector report"
+            echo
+            echo "- Target: \`${TARGET}\`"
+            echo "- Scanner: NVIDIA/skillspector v2.11.2, static analysis only"
+            if [ "$OUTCOME" = "success" ]; then
+              echo "- Result: exit 0 — risk score 50 or below (SAFE or CAUTION)"
+            else
+              echo "- Result: exit non-zero — risk score above 50 (DO_NOT_INSTALL), or the scan errored. Check the scan step log."
+            fi
+            echo
+            echo "Advisory only. A clean report is not clearance — read the findings below and decide."
+            echo
+            if [ -f report.md ]; then cat report.md; else echo "_No report produced. See the scan step log._"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: skillspector-report
+          path: report.md
+          if-no-files-found: warn
