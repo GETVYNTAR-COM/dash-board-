@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { partitionByRelevance } from '@/lib/citations/evidence';
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,7 +39,18 @@ export async function POST(request: NextRequest) {
     const allDirectories = directories || [];
     const allExisting = existingCitations || [];
     const existingDirIds = new Set(allExisting.map((c: any) => c.directory_id));
-    const availableDirectories = allDirectories.filter((d: any) => !existingDirIds.has(d.id));
+
+    // Never recommend a directory this business category cannot be listed on —
+    // the same relevance rule the scan and the report use.
+    const { relevant: availableDirectories } = partitionByRelevance(
+      allDirectories
+        .filter((d: any) => !existingDirIds.has(d.id))
+        .map((d: any) => ({
+          ...d,
+          domain: String(d.url || '').replace(/^https?:\/\/(www\.)?/, '').split('/')[0],
+        })),
+      client.category
+    );
 
     // Call Claude to optimize
     const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY });

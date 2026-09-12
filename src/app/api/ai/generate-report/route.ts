@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import {
+  CANNOT_VERIFY_SECTION_LABEL,
+  countEvidence,
+  formatMissingSummary,
+  napLabel,
+  normaliseStatus,
+  partitionByRelevance,
+} from '@/lib/citations/evidence';
 
 export async function POST(request: NextRequest) {
   try {
@@ -94,11 +102,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const allCitations = citations || [];
+    // ========================================================================
+    // EVIDENCE SPLIT
+    // ========================================================================
+    // Three streams, and only one of them is a gap:
+    //   live / possible_match — listing found
+    //   not_found             — checked, not listed. The gap count.
+    //   cannot_verify         — never checked. Reported separately.
+    // Directories irrelevant to the client's category are dropped entirely.
+    // ========================================================================
     const allCompetitors = competitors || [];
+
+    const normalisedCitations = (citations || []).map((c: any) => ({
+      ...c,
+      status: normaliseStatus(c.status),
+      name: c.directory?.name || 'Unknown directory',
+      domain: c.directory?.url ? String(c.directory.url).replace(/^https?:\/\/(www\.)?/, '').split('/')[0] : '',
+    }));
+
+    const { relevant: allCitations } = partitionByRelevance(normalisedCitations, client.category);
+
+    const counts = countEvidence(allCitations);
     const liveCitations = allCitations.filter((c: any) => c.status === 'live');
-    const pendingCitations = allCitations.filter((c: any) => c.status === 'pending' || c.status === 'submitted');
-    const errorCitations = allCitations.filter((c: any) => c.status === 'error');
+    const possibleMatchCitations = allCitations.filter((c: any) => c.status === 'possible_match');
+    const missingCitations = allCitations.filter((c: any) => c.status === 'not_found');
+    const cannotVerifyCitations = allCitations.filter((c: any) => c.status === 'cannot_verify');
 
     const reportTypeLabels: Record<string, string> = {
       citation_audit: 'Citation Audit Report',
@@ -113,6 +141,16 @@ export async function POST(request: NextRequest) {
       month: 'long',
       year: 'numeric',
     });
+
+    // NAP verdict across the rows where it was actually evaluated. Rows with
+    // no listing hold null and are not evidence of a mismatch.
+    const evaluatedNap = allCitations.filter((c: any) => c.nap_consistent !== null && c.nap_consistent !== undefined);
+    const napVerdict: boolean | null = evaluatedNap.length === 0
+      ? null
+      : evaluatedNap.every((c: any) => c.nap_consistent === true);
+    const napBasis = evaluatedNap.length === 0
+      ? ' (not evaluated — no verified listing to compare against)'
+      : ` (evaluated on ${evaluatedNap.length} verified listing${evaluatedNap.length === 1 ? '' : 's'})`;
 
     // Build prompt based on report type
     let prompt = `You are a UK local SEO expert writing a professional ${reportTypeLabels[reportType]} for an agency client.
@@ -131,30 +169,47 @@ Full Address: ${client.address || 'Not provided'}, ${client.city || ''}, ${clien
 Phone: ${client.phone || 'Not provided'}
 Current Citation Score: ${client.citation_score || 0}%
 
-Citation Summary:
-- Live citations: ${liveCitations.length}
-- Pending/Submitted: ${pendingCitations.length}
-- Errors: ${errorCitations.length}
-- Total: ${allCitations.length}
+Citation Evidence Summary (directories relevant to this category only):
+- Live listings verified: ${counts.live}
+- Possible listings (found, not fully corroborated): ${counts.possibleMatch}
+- Missing (checked, no listing found): ${counts.missing}
+- Could not be checked (directory blocks automated access): ${counts.cannotVerify}
+- Directories checkable: ${counts.verifiableTotal}
+- Gap headline: ${formatMissingSummary(counts)}
+
+NAP consistency: ${napLabel(napVerdict)}${napBasis}
+
+EVIDENCE RULES — these are not stylistic preferences, they are accuracy requirements:
+1. The ONLY gap figure is ${counts.missing}. Never state or imply the business is missing from ${counts.missing + counts.cannotVerify} directories.
+2. The ${counts.cannotVerify} directories under "${CANNOT_VERIFY_SECTION_LABEL}" were NOT checked. Never describe them as missing, absent, or a gap. Report them in their own clearly labelled section using that exact heading, and say a manual check is needed.
+3. Where NAP consistency is shown as "—" it was not evaluated. Do not assert a mismatch.
+4. Do not mention any directory not listed below — irrelevant directories have been removed for this business category.
 
 IMPORTANT: Do not use placeholder brackets like [Business Name] or [Date]. All fields above contain real data - use them directly in the report.
 `;
 
     if (reportType === 'citation_audit') {
       prompt += `
-Live citations on:
-${liveCitations.map((c: any) => `- ${c.directory?.name || 'Unknown'}`).join('\n') || '- None yet'}
+LIVE — listing verified (${counts.live}):
+${liveCitations.map((c: any) => `- ${c.name}`).join('\n') || '- None yet'}
 
-Directories with errors:
-${errorCitations.map((c: any) => `- ${c.directory?.name || 'Unknown'}`).join('\n') || '- None'}
+POSSIBLE MATCH — listing found but not fully corroborated (${counts.possibleMatch}):
+${possibleMatchCitations.map((c: any) => `- ${c.name}`).join('\n') || '- None'}
+
+MISSING — checked, no listing found (${counts.missing}). These are the gaps:
+${missingCitations.map((c: any) => `- ${c.name}`).join('\n') || '- None'}
+
+${CANNOT_VERIFY_SECTION_LABEL} (${counts.cannotVerify}) — NOT gaps, manual check required:
+${cannotVerifyCitations.map((c: any) => `- ${c.name}`).join('\n') || '- None'}
 
 Write a detailed citation audit covering:
 1. Executive Summary
 2. Current Citation Profile Assessment
-3. NAP Consistency Analysis
-4. Directory Coverage Gaps
-5. Priority Actions (ranked by impact)
-6. 90-Day Citation Building Strategy
+3. NAP Consistency Analysis (state "not evaluated" where it was not evaluated)
+4. Directory Coverage Gaps (the MISSING list only)
+5. ${CANNOT_VERIFY_SECTION_LABEL} (list them, state a manual check is needed)
+6. Priority Actions (ranked by impact)
+7. 90-Day Citation Building Strategy
 
 Keep it professional and actionable. Use UK English.`;
     } else if (reportType === 'competitor_analysis') {
@@ -212,9 +267,14 @@ Keep it professional, concise, and client-friendly. Use UK English.`;
         report_type: reportType,
         summary,
         insights: {
-          live_citations: liveCitations.length,
-          total_citations: allCitations.length,
+          live_citations: counts.live,
+          possible_match_citations: counts.possibleMatch,
+          missing_citations: counts.missing,
+          cannot_verify_citations: counts.cannotVerify,
+          checkable_citations: counts.verifiableTotal,
+          total_citations: counts.total,
           citation_score: client.citation_score,
+          nap_consistent: napVerdict,
           competitors_tracked: allCompetitors.length,
         },
         recommendations: {

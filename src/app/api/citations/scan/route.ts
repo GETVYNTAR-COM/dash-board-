@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import {
+  BOT_BLOCKED_REASON,
+  CANNOT_VERIFY_SECTION_LABEL,
+  EMPTY_NAP_SIGNALS,
+  STATUS_WORDING,
+  calculateCitationScore,
+  countEvidence,
+  formatMissingSummary,
+  isBotBlockedDomain,
+  partitionByRelevance,
+  resolveNapConsistent,
+  resolveSector,
+  type CitationStatus,
+  type EvidenceCounts,
+  type NapSignals,
+} from '@/lib/citations/evidence';
 
-// ============================================================================
-// CITATION STATUS MODEL
-// ============================================================================
-// live           = verified listing found
-// possible_match = likely listing found but not strong enough for full confidence
-// not_found      = checked and no listing found
-// blocked        = directory could not be checked due to technical restrictions
-// ============================================================================
-
-type CitationStatus = 'live' | 'possible_match' | 'not_found' | 'blocked';
+// The status model, the relevance rules and the NAP rules live in
+// src/lib/citations/evidence.ts so the scan, the report and the dashboard
+// cannot disagree about what a result means.
 
 interface DirectoryScanResult {
   directoryId: string;
@@ -21,27 +30,29 @@ interface DirectoryScanResult {
   listingUrl: string | null;
   verificationMethod: string;
   matchDetails: string[];
+  napSignals: NapSignals;
+}
+
+interface ExcludedDirectory {
+  directoryId: string;
+  directoryName: string;
+  domain: string;
+  reason: string;
 }
 
 interface ScanSummary {
   businessName: string;
-  totalDirectories: number;
+  catalogueTotal: number;
+  relevantDirectories: number;
+  excludedAsIrrelevant: number;
   checkedCount: number;
   liveCount: number;
   possibleMatchCount: number;
-  notFoundCount: number;
-  blockedCount: number;
+  missingCount: number;
+  cannotVerifyCount: number;
   citationScore: number;
   scanDurationMs: number;
 }
-
-// Report wording support
-const STATUS_WORDING: Record<CitationStatus, string> = {
-  live: 'verified by scan',
-  possible_match: 'possible listing detected',
-  not_found: 'not detected by scan',
-  blocked: 'directory check unavailable',
-};
 
 // ============================================================================
 // GOOGLE PLACES API (New) TYPES
@@ -195,7 +206,7 @@ function detectBusinessInContent(
   phone?: string,
   postcode?: string,
   address?: string
-): { found: boolean; confidence: 'high' | 'medium' | 'low'; reason: string; matchDetails: string[] } {
+): { found: boolean; confidence: 'high' | 'medium' | 'low'; reason: string; matchDetails: string[]; napSignals: NapSignals } {
   const normalizedContent = markdown.toLowerCase();
   const normalizedName = normaliseName(businessName);
   const nameWords = normalizedName.split(' ').filter(w => w.length > 2);
@@ -255,6 +266,10 @@ function detectBusinessInContent(
     }
   }
 
+  // NAP evidence carried out of the check: a phone or postcode found beside
+  // the name is the only thing here that corroborates NAP.
+  const napSignals: NapSignals = { phone: phoneFound, postcode: postcodeFound, address: addressFound };
+
   // --- "no results" detection (before corroboration gate) ---
   const noResultsIndicators = [
     'no results found',
@@ -267,34 +282,34 @@ function detectBusinessInContent(
   ];
   for (const indicator of noResultsIndicators) {
     if (normalizedContent.includes(indicator)) {
-      return { found: false, confidence: 'high', reason: 'No results indicator found on page', matchDetails: ['Page contains "no results" indicator'] };
+      return { found: false, confidence: 'high', reason: 'No results indicator found on page', matchDetails: ['Page contains "no results" indicator'], napSignals };
     }
   }
 
   // --- corroboration gate ---
   // Name + phone → high (live)
   if (nameFound && phoneFound) {
-    return { found: true, confidence: 'high', reason: 'Name + phone corroborated in content', matchDetails };
+    return { found: true, confidence: 'high', reason: 'Name + phone corroborated in content', matchDetails, napSignals };
   }
   // Name + postcode → high (live)
   if (nameFound && postcodeFound) {
-    return { found: true, confidence: 'high', reason: 'Name + postcode corroborated in content', matchDetails };
+    return { found: true, confidence: 'high', reason: 'Name + postcode corroborated in content', matchDetails, napSignals };
   }
   // Name + address → medium (possible_match)
   if (nameFound && addressFound) {
-    return { found: true, confidence: 'medium', reason: 'Name + address fragment in content', matchDetails };
+    return { found: true, confidence: 'medium', reason: 'Name + address fragment in content', matchDetails, napSignals };
   }
   // Phone alone is a strong signal even without name
   if (phoneFound) {
-    return { found: true, confidence: 'medium', reason: 'Phone found in content without name corroboration', matchDetails };
+    return { found: true, confidence: 'medium', reason: 'Phone found in content without name corroboration', matchDetails, napSignals };
   }
   // Name alone — search pages echo the query so this proves nothing
   if (nameFound) {
     matchDetails.push('Name found but no NAP corroboration (search pages echo query text)');
-    return { found: false, confidence: 'low', reason: 'Name found without NAP corroboration', matchDetails };
+    return { found: false, confidence: 'low', reason: 'Name found without NAP corroboration', matchDetails, napSignals };
   }
 
-  return { found: false, confidence: 'medium', reason: 'Business not detected in content', matchDetails };
+  return { found: false, confidence: 'medium', reason: 'Business not detected in content', matchDetails, napSignals };
 }
 
 // ============================================================================
@@ -401,9 +416,9 @@ function analyzeSerpResults(
   phone?: string,
   postcode?: string,
   address?: string
-): { found: boolean; confidence: 'high' | 'medium' | 'low'; reason: string; listingUrl: string | null; matchDetails: string[] } {
+): { found: boolean; confidence: 'high' | 'medium' | 'low'; reason: string; listingUrl: string | null; matchDetails: string[]; napSignals: NapSignals } {
   if (results.length === 0) {
-    return { found: false, confidence: 'high', reason: 'No search results found on directory', listingUrl: null, matchDetails: [] };
+    return { found: false, confidence: 'high', reason: 'No search results found on directory', listingUrl: null, matchDetails: [], napSignals: EMPTY_NAP_SIGNALS };
   }
 
   const normalizedName = normaliseName(businessName);
@@ -478,27 +493,30 @@ function analyzeSerpResults(
       }
     }
 
+    // NAP evidence from this specific result.
+    const napSignals: NapSignals = { phone: phoneMatch, postcode: postcodeMatch, address: addressMatch };
+
     // --- corroboration gate ---
 
     // Name + phone → high
     if (nameFound && phoneMatch) {
-      return { found: true, confidence: 'high', reason: 'Name + phone corroborated in search result', listingUrl: result.link, matchDetails };
+      return { found: true, confidence: 'high', reason: 'Name + phone corroborated in search result', listingUrl: result.link, matchDetails, napSignals };
     }
     // Name + postcode → high
     if (nameFound && postcodeMatch) {
-      return { found: true, confidence: 'high', reason: 'Name + postcode corroborated in search result', listingUrl: result.link, matchDetails };
+      return { found: true, confidence: 'high', reason: 'Name + postcode corroborated in search result', listingUrl: result.link, matchDetails, napSignals };
     }
     // Name + address → high
     if (nameFound && addressMatch) {
-      return { found: true, confidence: 'high', reason: 'Name + address corroborated in search result', listingUrl: result.link, matchDetails };
+      return { found: true, confidence: 'high', reason: 'Name + address corroborated in search result', listingUrl: result.link, matchDetails, napSignals };
     }
     // Phone match with partial name → high
     if (phoneMatch && partialNameMatch) {
-      return { found: true, confidence: 'high', reason: 'Phone + partial name in search result', listingUrl: result.link, matchDetails };
+      return { found: true, confidence: 'high', reason: 'Phone + partial name in search result', listingUrl: result.link, matchDetails, napSignals };
     }
     // Phone alone → medium (phone is a strong unique signal)
     if (phoneMatch) {
-      return { found: true, confidence: 'medium', reason: 'Phone found in search result without name corroboration', listingUrl: result.link, matchDetails };
+      return { found: true, confidence: 'medium', reason: 'Phone found in search result without name corroboration', listingUrl: result.link, matchDetails, napSignals };
     }
 
     // Track best name-only match for possible_match fallback
@@ -519,6 +537,7 @@ function analyzeSerpResults(
       reason: bestNameOnly.reason,
       listingUrl: bestNameOnly.listingUrl,
       matchDetails: bestNameOnly.matchDetails,
+      napSignals: EMPTY_NAP_SIGNALS,
     };
   }
 
@@ -528,6 +547,7 @@ function analyzeSerpResults(
     reason: 'Search results found but no confident match to business',
     listingUrl: null,
     matchDetails: [],
+    napSignals: EMPTY_NAP_SIGNALS,
   };
 }
 
@@ -736,7 +756,10 @@ function checkNAPConsistency(
 }
 
 // Domains that are not general business directories — matching on these
-// almost always produces false positives (sector-specific, social, etc.)
+// almost always produces false positives (sector-specific, social, etc.).
+// A skipped check produces no evidence, so these are reported cannot_verify,
+// never not_found. Where they are also irrelevant to the client's category
+// they are filtered out before the scan reaches this point.
 const FALSE_POSITIVE_BLOCKLIST = new Set([
   'nhs.uk',
   'lawsociety.org.uk',
@@ -754,7 +777,7 @@ const FALSE_POSITIVE_BLOCKLIST = new Set([
 // DIRECTORY VERIFICATION
 // ============================================================================
 // Checks a single directory using SerpAPI (primary) with Firecrawl fallback
-// Never throws - converts all errors to "blocked" status
+// Never throws - converts all errors to "cannot_verify" status
 // ============================================================================
 
 async function verifyDirectory(
@@ -771,18 +794,32 @@ async function verifyDirectory(
     directoryId,
     directoryName,
     domain,
-    status: 'blocked',
+    status: 'cannot_verify',
     reason: '',
     listingUrl: null,
     verificationMethod: 'none',
     matchDetails: [],
+    napSignals: EMPTY_NAP_SIGNALS,
   };
 
   try {
-    // Skip domains known to produce false positives
+    // Directories that block automated access: never checked, never counted
+    // as a gap. Short-circuited before any API call so we do not pay for a
+    // result we could not trust.
+    if (isBotBlockedDomain(domain)) {
+      baseResult.status = 'cannot_verify';
+      baseResult.reason = BOT_BLOCKED_REASON;
+      baseResult.verificationMethod = 'bot_blocked';
+      baseResult.matchDetails = ['Directory blocks bots, captchas or requires login'];
+      console.log(`[Directory Scan] ${directoryName} (${domain}): cannot_verify (blocks automated access)`);
+      return baseResult;
+    }
+
+    // Not a general business listing site — a match here would be a false
+    // positive and a miss is not evidence of absence.
     if (FALSE_POSITIVE_BLOCKLIST.has(domain)) {
-      baseResult.status = 'not_found';
-      baseResult.reason = 'Directory is not a business listing site';
+      baseResult.status = 'cannot_verify';
+      baseResult.reason = 'Not a general business listing site — not checked';
       baseResult.verificationMethod = 'blocklist';
       baseResult.matchDetails = ['Skipped: domain is on false-positive blocklist'];
       console.log(`[Directory Scan] ${directoryName} (${domain}): skipped (blocklisted)`);
@@ -807,7 +844,7 @@ async function verifyDirectory(
       // If rate limited, return immediately with the rate limit error
       if (serpResult.rateLimited) {
         console.error(`[SerpAPI] Rate limit hit for ${directoryName}`);
-        baseResult.status = 'blocked';
+        baseResult.status = 'cannot_verify';
         baseResult.reason = 'SerpAPI daily limit reached, try again tomorrow';
         baseResult.verificationMethod = 'serpapi_rate_limited';
         return baseResult;
@@ -823,6 +860,7 @@ async function verifyDirectory(
           baseResult.listingUrl = analysis.listingUrl;
           baseResult.verificationMethod = 'serpapi';
           baseResult.matchDetails = analysis.matchDetails;
+          baseResult.napSignals = analysis.napSignals;
 
           console.log(`[Directory Scan] ${directoryName} (${domain}): status=${baseResult.status}, reason="${baseResult.reason}"`);
           return baseResult;
@@ -832,6 +870,7 @@ async function verifyDirectory(
           baseResult.reason = analysis.reason;
           baseResult.verificationMethod = 'serpapi';
           baseResult.matchDetails = analysis.matchDetails;
+          baseResult.napSignals = analysis.napSignals;
 
           console.log(`[Directory Scan] ${directoryName} (${domain}): status=${baseResult.status}, reason="${baseResult.reason}"`);
           return baseResult;
@@ -859,7 +898,7 @@ async function verifyDirectory(
 
       if (!scrapeResult.success) {
         console.error(`[Firecrawl] Failed to scrape ${directoryName}: ${scrapeResult.error}`);
-        baseResult.status = 'blocked';
+        baseResult.status = 'cannot_verify';
         baseResult.reason = `Firecrawl error: ${scrapeResult.error}`;
         baseResult.verificationMethod = 'firecrawl_error';
       } else {
@@ -883,10 +922,11 @@ async function verifyDirectory(
 
         baseResult.verificationMethod = 'firecrawl';
         baseResult.matchDetails = detection.matchDetails;
+        baseResult.napSignals = detection.napSignals;
       }
     } else if (!directoryConfig.serpApiSupported) {
       // No methods available
-      baseResult.status = 'blocked';
+      baseResult.status = 'cannot_verify';
       baseResult.reason = 'No search method available for this directory';
       baseResult.verificationMethod = 'none';
     }
@@ -895,43 +935,18 @@ async function verifyDirectory(
     return baseResult;
 
   } catch (error) {
-    // Convert any error to blocked status - never let one directory break the scan
+    // Convert any error to cannot_verify - never let one directory break the scan
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[Directory Scan] ${directoryName} (${domain}): ERROR - ${errorMessage}`);
 
     return {
       ...baseResult,
-      status: 'blocked',
+      status: 'cannot_verify',
       reason: `Error during verification: ${errorMessage}`,
       verificationMethod: 'error',
       matchDetails: [`Exception: ${errorMessage}`],
     };
   }
-}
-
-// ============================================================================
-// CITATION SCORE CALCULATION
-// ============================================================================
-// Formula: live_count / (total - blocked) * 100
-// Blocked directories are excluded from the denominator so that transient
-// network errors or rate limits do not deflate the score.
-// ============================================================================
-
-function calculateCitationScore(results: DirectoryScanResult[]): number {
-  const liveCount = results.filter(r => r.status === 'live').length;
-  const blockedCount = results.filter(r => r.status === 'blocked').length;
-  const scoredCount = results.length - blockedCount;
-
-  if (scoredCount <= 0) {
-    console.log('[Score] No scoreable directories (all blocked), returning 0');
-    return 0;
-  }
-
-  const score = Math.round((liveCount / scoredCount) * 100);
-
-  console.log(`[Score] ${liveCount} live / ${scoredCount} scoreable (${results.length} total - ${blockedCount} blocked) = ${score}%`);
-
-  return score;
 }
 
 // ============================================================================
@@ -941,17 +956,19 @@ function calculateCitationScore(results: DirectoryScanResult[]): number {
 function logScanSummary(summary: ScanSummary): void {
   console.log('');
   console.log('========== CITATION SCAN SUMMARY ==========');
-  console.log(`Business:          ${summary.businessName}`);
-  console.log(`Total Directories: ${summary.totalDirectories}`);
-  console.log(`Checked:           ${summary.checkedCount}`);
+  console.log(`Business:            ${summary.businessName}`);
+  console.log(`Directory catalogue: ${summary.catalogueTotal}`);
+  console.log(`Excluded (category): ${summary.excludedAsIrrelevant}`);
+  console.log(`Relevant:            ${summary.relevantDirectories}`);
+  console.log(`Checked:             ${summary.checkedCount}`);
   console.log(`-------------------------------------------`);
-  console.log(`Live:              ${summary.liveCount}`);
-  console.log(`Possible Match:    ${summary.possibleMatchCount}`);
-  console.log(`Not Found:         ${summary.notFoundCount}`);
-  console.log(`Blocked:           ${summary.blockedCount}`);
+  console.log(`Live:                ${summary.liveCount}`);
+  console.log(`Possible Match:      ${summary.possibleMatchCount}`);
+  console.log(`Missing (not found): ${summary.missingCount}`);
+  console.log(`Could not check:     ${summary.cannotVerifyCount}`);
   console.log(`-------------------------------------------`);
-  console.log(`Citation Score:    ${summary.citationScore}%`);
-  console.log(`Scan Duration:     ${summary.scanDurationMs}ms`);
+  console.log(`Citation Score:      ${summary.citationScore}%`);
+  console.log(`Scan Duration:       ${summary.scanDurationMs}ms`);
   console.log('============================================');
   console.log('');
 }
@@ -961,7 +978,7 @@ function logDirectoryResult(result: DirectoryScanResult): void {
     live: '✓',
     possible_match: '~',
     not_found: '✗',
-    blocked: '⊘',
+    cannot_verify: '⊘',
   };
 
   const emoji = statusEmoji[result.status];
@@ -1035,8 +1052,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch directories' }, { status: 500 });
     }
 
-    const directoryList = directories ?? [];
-    console.log(`[Scan] Found ${directoryList.length} directories to check`);
+    const catalogue = (directories ?? []).map(directory => ({
+      ...directory,
+      domain: extractDomain(directory.url),
+    }));
+
+    // ========================================================================
+    // CATEGORY RELEVANCE FILTER
+    // ========================================================================
+    // Sector-specific directories a business in this category can never be
+    // listed on are removed before the scan. They are not checked, not
+    // counted and not reported — a roofer is not "missing from Rightmove".
+    // ========================================================================
+    const { relevant: directoryList, excluded: excludedDirectories } = partitionByRelevance(
+      catalogue,
+      client.category
+    );
+
+    const excludedForResponse: ExcludedDirectory[] = excludedDirectories.map(directory => ({
+      directoryId: directory.id,
+      directoryName: directory.name,
+      domain: directory.domain,
+      reason: directory.exclusionReason,
+    }));
+
+    console.log(`[Scan] Catalogue: ${catalogue.length} directories`);
+    console.log(`[Scan] Client category: "${client.category}" (sector: ${resolveSector(client.category) ?? 'none'})`);
+    console.log(`[Scan] Excluded as irrelevant: ${excludedDirectories.length}`);
+    if (excludedDirectories.length > 0) {
+      console.log(`[Scan] Excluded: ${excludedDirectories.map(d => d.name).join(', ')}`);
+    }
+    console.log(`[Scan] Relevant directories to check: ${directoryList.length}`);
+
+    // Rows written by earlier scans for these directories are left in place —
+    // nothing is deleted — but the dashboard and the report both apply the same
+    // relevance rule, so they never reach a client-facing count or page.
 
     // Search Google Places for the business using Places API (New)
     const googleApiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -1181,8 +1231,7 @@ export async function POST(request: NextRequest) {
 
     // Scan each directory directly (no pre-created pending records)
     for (const directory of directoryList) {
-      // Extract domain from URL (e.g., "https://www.yell.com" -> "yell.com")
-      const domain = extractDomain(directory.url);
+      const domain = directory.domain;
 
       // If rate limit was hit, stop making more API calls
       if (rateLimitHit) {
@@ -1191,11 +1240,12 @@ export async function POST(request: NextRequest) {
           directoryId: directory.id,
           directoryName: directory.name,
           domain: domain,
-          status: 'blocked',
+          status: 'cannot_verify',
           reason: 'Skipped due to API rate limit',
           listingUrl: null,
           verificationMethod: 'skipped',
           matchDetails: [],
+          napSignals: EMPTY_NAP_SIGNALS,
         });
         continue;
       }
@@ -1212,9 +1262,10 @@ export async function POST(request: NextRequest) {
         client.address
       );
 
-      // Google Business Profile cannot be verified via scraping — flag for manual check
+      // Google Business Profile cannot be verified via scraping — flag for
+      // manual check. Unverifiable, so never counted as a missing listing.
       if (domain === 'business.google.com' && result.status !== 'live') {
-        result.status = 'blocked';
+        result.status = 'cannot_verify';
         result.reason = 'GBP status requires manual verification';
         result.verificationMethod = 'manual_check_required';
       }
@@ -1236,12 +1287,26 @@ export async function POST(request: NextRequest) {
       // Only upsert if we got a real result (not skipped)
       if (result.verificationMethod !== 'skipped') {
         // Log BEFORE upsert - show exactly what we're trying to write
+        // NAP is evaluated only where a listing was actually found. Google
+        // Business Profile is the one row where both sides of the comparison
+        // exist (client record vs Google Places), so a genuine mismatch is
+        // detectable there; elsewhere a matched phone or postcode corroborates
+        // NAP and anything else stays unknown (null → displayed as "—").
+        const napConsistent = resolveNapConsistent({
+          status: result.status,
+          signals: result.napSignals,
+          googleBaseline:
+            domain === 'business.google.com'
+              ? { checked: Boolean(googlePlaceDetails), isConsistent: napConsistency.isConsistent }
+              : null,
+        });
+
         const upsertPayload = {
           client_id: clientId,
           directory_id: directory.id,
           status: result.status,
           listing_url: result.listingUrl,
-          nap_consistent: false,
+          nap_consistent: napConsistent,
           verified_at: new Date().toISOString(),
           verification_method: result.verificationMethod,
           verification_reason: result.reason,
@@ -1277,24 +1342,24 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     // CALCULATE CITATION SCORE
     // ========================================================================
-    const citationScore = calculateCitationScore(scanResults);
-
-    // Count statuses
-    const liveCount = scanResults.filter(r => r.status === 'live').length;
-    const possibleMatchCount = scanResults.filter(r => r.status === 'possible_match').length;
-    const notFoundCount = scanResults.filter(r => r.status === 'not_found').length;
-    const blockedCount = scanResults.filter(r => r.status === 'blocked').length;
+    // Counts come from the shared evidence model: `missing` is not_found only,
+    // and directories that could not be checked are out of both the gap count
+    // and the score denominator.
+    const counts: EvidenceCounts = countEvidence(scanResults);
+    const citationScore = calculateCitationScore(counts);
 
     // Log summary
     const scanDuration = Date.now() - scanStartTime;
     const summary: ScanSummary = {
       businessName: client.business_name,
-      totalDirectories: directoryList.length,
+      catalogueTotal: catalogue.length,
+      relevantDirectories: directoryList.length,
+      excludedAsIrrelevant: excludedForResponse.length,
       checkedCount: scanResults.length,
-      liveCount,
-      possibleMatchCount,
-      notFoundCount,
-      blockedCount,
+      liveCount: counts.live,
+      possibleMatchCount: counts.possibleMatch,
+      missingCount: counts.missing,
+      cannotVerifyCount: counts.cannotVerify,
       citationScore,
       scanDurationMs: scanDuration,
     };
@@ -1352,13 +1417,18 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     // BUILD RESPONSE
     // ========================================================================
-    const scoredCount = directoryList.length - blockedCount;
+    // Counts are split three ways on purpose:
+    //   missing_count      — checked, not listed. The only gap figure.
+    //   cannot_verify_count— never checked. Reported separately, never a gap.
+    //   excluded_count     — irrelevant to this category. Out of the report.
+    // ========================================================================
 
     return NextResponse.json({
       success: true,
       client: {
         id: client.id,
         business_name: client.business_name,
+        category: client.category,
         citation_score: citationScore,
       },
       google_places: googlePlaceDetails
@@ -1377,21 +1447,41 @@ export async function POST(request: NextRequest) {
             found: false,
             message: 'Business not found on Google Places or API not configured',
           },
-      nap_consistency: {
-        is_consistent: napConsistency.isConsistent,
-        name_match: napConsistency.nameMatch,
-        address_match: napConsistency.addressMatch,
-        phone_match: napConsistency.phoneMatch,
-        issues: napConsistency.details,
-      },
+      nap_consistency: googlePlaceDetails
+        ? {
+            evaluated: true,
+            is_consistent: napConsistency.isConsistent,
+            name_match: napConsistency.nameMatch,
+            address_match: napConsistency.addressMatch,
+            phone_match: napConsistency.phoneMatch,
+            issues: napConsistency.details,
+            basis: 'Client record compared against the Google Places listing',
+          }
+        : {
+            evaluated: false,
+            is_consistent: null,
+            issues: ['Not evaluated — no Google Places listing to compare against'],
+          },
       citations: {
+        catalogue_total: catalogue.length,
         total_directories: directoryList.length,
         scanned_count: scanResults.length,
-        live_count: liveCount,
-        possible_match_count: possibleMatchCount,
-        not_found_count: notFoundCount,
-        blocked_count: blockedCount,
-        pending_count: 0, // No hardcoded pending - all directories are scanned
+        live_count: counts.live,
+        possible_match_count: counts.possibleMatch,
+        missing_count: counts.missing,
+        cannot_verify_count: counts.cannotVerify,
+        excluded_count: excludedForResponse.length,
+        missing_summary: formatMissingSummary(counts),
+      },
+      category_relevance: {
+        client_category: client.category,
+        sector: resolveSector(client.category),
+        excluded_count: excludedForResponse.length,
+        excluded_directories: excludedForResponse.map(d => ({
+          directory: d.directoryName,
+          domain: d.domain,
+          reason: d.reason,
+        })),
       },
       api_status: {
         rate_limit_hit: rateLimitHit,
@@ -1400,25 +1490,41 @@ export async function POST(request: NextRequest) {
       },
       citation_score: {
         value: citationScore,
-        formula: 'live_count / (total - blocked) * 100',
+        formula: 'live_count / (relevant_directories - cannot_verify) * 100',
         calculation: {
-          live: liveCount,
-          possible_match: possibleMatchCount,
-          not_found: notFoundCount,
-          blocked: blockedCount,
-          denominator: scoredCount,
+          live: counts.live,
+          possible_match: counts.possibleMatch,
+          missing: counts.missing,
+          cannot_verify: counts.cannotVerify,
+          denominator: counts.verifiableTotal,
         },
       },
-      directory_results: scanResults.map(r => ({
-        directory: r.directoryName,
-        domain: r.domain,
-        status: r.status,
-        status_wording: STATUS_WORDING[r.status],
-        reason: r.reason,
-        listing_url: r.listingUrl,
-        verification_method: r.verificationMethod,
-        match_details: r.matchDetails,
-      })),
+      directory_results: scanResults
+        .filter(r => r.status !== 'cannot_verify')
+        .map(r => ({
+          directory: r.directoryName,
+          domain: r.domain,
+          status: r.status,
+          status_wording: STATUS_WORDING[r.status],
+          reason: r.reason,
+          listing_url: r.listingUrl,
+          verification_method: r.verificationMethod,
+          match_details: r.matchDetails,
+        })),
+      // Reported apart from the results above and never counted as gaps.
+      could_not_check: {
+        label: CANNOT_VERIFY_SECTION_LABEL,
+        count: counts.cannotVerify,
+        directories: scanResults
+          .filter(r => r.status === 'cannot_verify')
+          .map(r => ({
+            directory: r.directoryName,
+            domain: r.domain,
+            status_wording: STATUS_WORDING[r.status],
+            reason: r.reason,
+            verification_method: r.verificationMethod,
+          })),
+      },
       scan_info: {
         method: 'serpapi_firecrawl_v2',
         serpapi_enabled: Boolean(process.env.SERP_API_KEY),
