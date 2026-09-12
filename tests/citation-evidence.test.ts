@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 
 import {
   assessRelevance,
+  findForbiddenDirectoryMentions,
   calculateCitationScore,
   countEvidence,
   formatMissingSummary,
@@ -192,5 +193,79 @@ describe('3. category relevance', () => {
     assert.equal(relevant.length, 1);
     assert.equal(excluded.length, 2);
     assert.ok(excluded.every(d => d.exclusionReason.includes('trades')));
+  });
+});
+
+describe('4. the report may only name directories that were scanned', () => {
+  const scanned = ['Yell', 'Checkatrade', 'Google Business Profile', '192.com'];
+  const catalogue = [...scanned, 'Foursquare', 'Yalwa UK', 'Which? Trusted Traders'];
+
+  it('passes a report that names only scanned directories', () => {
+    const report = 'Listings are live on Yell and Checkatrade. 192.com is missing.';
+    assert.deepEqual(findForbiddenDirectoryMentions(report, scanned, catalogue), []);
+  });
+
+  it('catches a catalogue directory that was not part of this scan', () => {
+    const report = 'Priority actions: submit to Foursquare and Yalwa UK.';
+    assert.deepEqual(findForbiddenDirectoryMentions(report, scanned, catalogue), ['Foursquare', 'Yalwa UK']);
+  });
+
+  it('catches trade bodies and aggregators that are not directories at all', () => {
+    const report = 'Consider NFRC accreditation, an FMB listing and a Data Axle submission.';
+    const found = findForbiddenDirectoryMentions(report, scanned, catalogue);
+    assert.ok(found.includes('NFRC'), 'NFRC should be caught');
+    assert.ok(found.includes('FMB'), 'FMB should be caught');
+    assert.ok(found.includes('Data Axle'), 'Data Axle should be caught');
+  });
+
+  it('catches a local chamber of commerce recommendation', () => {
+    const found = findForbiddenDirectoryMentions(
+      'Join the local Chamber of Commerce directory.', scanned, catalogue
+    );
+    assert.deepEqual(found, ['Chamber of Commerce']);
+  });
+
+  it('does not flag a term that is part of a scanned directory name', () => {
+    const found = findForbiddenDirectoryMentions(
+      'Which? Trusted Traders shows a live listing.',
+      [...scanned, 'Which? Trusted Traders'],
+      catalogue
+    );
+    assert.deepEqual(found, []);
+  });
+
+  it('does not flag a name embedded inside another word', () => {
+    assert.deepEqual(findForbiddenDirectoryMentions('Mantaray Marketing handles this.', scanned, ['Manta']), []);
+  });
+
+  it('matches short acronyms case-sensitively so prose does not trip the guard', () => {
+    assert.deepEqual(findForbiddenDirectoryMentions('The fmb of the matter.', scanned, []), []);
+    assert.deepEqual(findForbiddenDirectoryMentions('An FMB listing is advised.', scanned, []), ['FMB']);
+  });
+});
+
+describe('5. the score denominator excludes unverifiable directories', () => {
+  it('scores 13 live of 36 checkable, not 13 of 49', () => {
+    const results = [
+      ...Array(13).fill({ status: 'live' as const }),
+      ...Array(23).fill({ status: 'not_found' as const }),
+      ...Array(13).fill({ status: 'cannot_verify' as const }),
+    ];
+    const counts = countEvidence(results);
+    assert.equal(counts.total, 49);
+    assert.equal(counts.verifiableTotal, 36);
+    assert.equal(counts.missing, 23);
+    assert.equal(calculateCitationScore(counts), 36);
+  });
+
+  it('never reports every scanned directory as a gap', () => {
+    const results = [
+      ...Array(36).fill({ status: 'not_found' as const }),
+      ...Array(13).fill({ status: 'cannot_verify' as const }),
+    ];
+    const counts = countEvidence(results);
+    assert.equal(counts.missing, 36);
+    assert.notEqual(counts.missing, counts.total);
+    assert.match(formatMissingSummary(counts), /Missing from 36 of the 36 directories that could be checked/);
   });
 });

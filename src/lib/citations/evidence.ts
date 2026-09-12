@@ -334,3 +334,84 @@ export function normaliseStatus(status: string): CitationStatus {
   }
   return 'cannot_verify';
 }
+
+// ============================================================================
+// DIRECTORY UNIVERSE GUARD
+// ============================================================================
+// A generated report may only name directories that were actually scanned for
+// this client. Anything else — a directory in the catalogue that was not part
+// of this scan, a trade body, a data aggregator, a chamber of commerce — is an
+// invention, and an invented directory in a client-facing report is the same
+// class of defect as a false gap.
+// ============================================================================
+
+// Bodies and aggregators that are not in the directory table at all but which
+// a model reaches for when asked about UK local SEO.
+export const EXTERNAL_DIRECTORY_TERMS: string[] = [
+  'NFRC',
+  'National Federation of Roofing Contractors',
+  'Federation of Master Builders',
+  'FMB',
+  'Data Axle',
+  'Infogroup',
+  'Neustar Localeze',
+  'Localeze',
+  'Factual',
+  'Chamber of Commerce',
+  'Yellow Pages',
+  'Yellowpages',
+  'Angie',
+  "Angie's List",
+  'Houzz',
+  'Trustatrader',
+  'TrustATrader',
+  'Local.com',
+  'Citysearch',
+  'Manta',
+  'Superpages',
+];
+
+function phrasePattern(term: string): RegExp {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Short acronyms (FMB, NFRC) are matched case-sensitively so ordinary prose
+  // does not trip the guard; longer names are matched case-insensitively.
+  const flags = term.length <= 4 ? '' : 'i';
+  // Boundaries that tolerate punctuation and markdown around the phrase.
+  return new RegExp(`(^|[^A-Za-z0-9])${escaped}($|[^A-Za-z0-9])`, flags);
+}
+
+// Returns the directory names mentioned in `text` that were not part of this
+// scan. `allowed` is the scanned set; `catalogue` is every directory known to
+// the database, so a real directory that simply was not scanned is caught too.
+export function findForbiddenDirectoryMentions(
+  text: string,
+  allowed: string[],
+  catalogue: string[] = []
+): string[] {
+  const allowedLower = new Set(allowed.map(name => name.trim().toLowerCase()));
+
+  const candidates = [
+    ...catalogue.filter(name => !allowedLower.has(name.trim().toLowerCase())),
+    ...EXTERNAL_DIRECTORY_TERMS,
+  ];
+
+  const found = new Set<string>();
+
+  for (const candidate of candidates) {
+    const term = candidate.trim();
+    if (!term || allowedLower.has(term.toLowerCase())) continue;
+
+    // A term that is part of an allowed directory's name is not an invention
+    // (e.g. "Yell" inside "Yell.com" when Yell.com was scanned).
+    const containedInAllowed = allowed.some(name =>
+      name.toLowerCase().includes(term.toLowerCase())
+    );
+    if (containedInAllowed) continue;
+
+    if (phrasePattern(term).test(text)) {
+      found.add(term);
+    }
+  }
+
+  return Array.from(found).sort();
+}

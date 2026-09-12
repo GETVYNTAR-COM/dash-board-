@@ -1225,6 +1225,9 @@ export async function POST(request: NextRequest) {
 
     // Track API errors for reporting
     const apiErrors: string[] = [];
+    // A row that did not persist means the dashboard and any report built off
+    // this scan are reading stale evidence. Collected, not swallowed.
+    const persistenceFailures: Array<{ directory: string; message: string; code?: string; hint?: string }> = [];
     let rateLimitHit = false;
 
     const scanResults: DirectoryScanResult[] = [];
@@ -1328,6 +1331,12 @@ export async function POST(request: NextRequest) {
             details: upsertError.details,
             hint: upsertError.hint,
           });
+          persistenceFailures.push({
+            directory: directory.name,
+            message: upsertError.message,
+            code: upsertError.code,
+            hint: upsertError.hint ?? undefined,
+          });
         } else {
           console.log('[Upsert SUCCESS]', directory.name, 'rows:', upsertData?.length ?? 0);
         }
@@ -1366,11 +1375,44 @@ export async function POST(request: NextRequest) {
 
     logScanSummary(summary);
 
-    // Update client's citation score and Google Places data
+    // ========================================================================
+    // PERSISTENCE GATE
+    // ========================================================================
+    // If citation rows were rejected, the scan's findings are not in the
+    // database. Saying "success" here is what lets a report be generated off
+    // the previous scan's rows and presented as current evidence.
+    // ========================================================================
+    if (persistenceFailures.length > 0) {
+      const first = persistenceFailures[0];
+      console.error(`[Scan] ${persistenceFailures.length} citation rows failed to persist`);
+      return NextResponse.json(
+        {
+          success: false,
+          persisted: false,
+          error: `Scan ran but ${persistenceFailures.length} of ${scanResults.length} citation rows could not be saved`,
+          hint:
+            first.code === '23514' || /constraint/i.test(first.message)
+              ? 'The citations status constraint is rejecting the scan statuses. Run migration 003_citation_evidence_integrity.sql.'
+              : first.hint ?? null,
+          db_error: first,
+          failed_directories: persistenceFailures.map(f => f.directory),
+        },
+        { status: 500 }
+      );
+    }
+
+    // Update client's citation score and Google Places data.
+    // A scan where nothing could be checked produces no score — writing 0 there
+    // would replace a real number with a fabricated one.
     const updateData: Record<string, unknown> = {
-      citation_score: citationScore,
       updated_at: new Date().toISOString(),
     };
+
+    if (counts.verifiableTotal > 0) {
+      updateData.citation_score = citationScore;
+    } else {
+      console.warn('[Scan] No directory could be checked — citation score left unchanged');
+    }
 
     if (googlePlaceDetails) {
       updateData.google_place_id = googlePlacesData?.place_id ?? null;
@@ -1412,7 +1454,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[Scan] Client citation score updated to ${citationScore}%`);
+    console.log(
+      counts.verifiableTotal > 0
+        ? `[Scan] Client citation score updated to ${citationScore}% (${counts.live} live / ${counts.verifiableTotal} checkable, ${counts.cannotVerify} excluded as unverifiable)`
+        : '[Scan] Citation score not updated — no directory could be checked'
+    );
 
     // ========================================================================
     // BUILD RESPONSE
@@ -1487,6 +1533,15 @@ export async function POST(request: NextRequest) {
         rate_limit_hit: rateLimitHit,
         errors: apiErrors.length > 0 ? apiErrors : null,
         error_message: rateLimitHit ? 'SerpAPI daily limit reached, try again tomorrow' : null,
+        serpapi_configured: Boolean(process.env.SERP_API_KEY),
+        firecrawl_configured: Boolean(process.env.FIRECRAWL_API_KEY),
+        // Nothing could be checked: no coverage evidence exists and the stored
+        // citation score was deliberately left unchanged.
+        no_evidence: counts.verifiableTotal === 0,
+        no_evidence_message:
+          counts.verifiableTotal === 0
+            ? `None of the ${counts.total} directories could be checked. Citation score left unchanged. Check SERP_API_KEY and FIRECRAWL_API_KEY.`
+            : null,
       },
       citation_score: {
         value: citationScore,
