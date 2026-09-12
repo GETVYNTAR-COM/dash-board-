@@ -44,7 +44,11 @@ export const CANNOT_VERIFY_SECTION_LABEL =
 // credits on a call whose result we could never trust.
 // ============================================================================
 
-export const BOT_BLOCKED_DOMAINS = new Set<string>([
+// Registrable domains. The live table stores regional and product subdomains
+// (uk.cylex.com, business.instagram.com, uk.tuugo.biz), so these are matched
+// as suffixes — an exact-match set silently let five of them through to be
+// scanned and counted as gaps.
+export const BOT_BLOCKED_DOMAIN_LIST: string[] = [
   'linkedin.com',
   'instagram.com',
   'facebook.com',
@@ -57,17 +61,30 @@ export const BOT_BLOCKED_DOMAINS = new Set<string>([
   'nextdoor.com',
   'pinterest.com',
   'pinterest.co.uk',
+  'cylex.com',
   'cylex-uk.co.uk',
+  'tuugo.biz',
   'tuugo.co.uk',
   'lacartes.com',
   'cityvisitor.co.uk',
   'hotfrog.co.uk',
-]);
+];
+
+export const BOT_BLOCKED_DOMAINS = new Set<string>(BOT_BLOCKED_DOMAIN_LIST);
 
 export const BOT_BLOCKED_REASON = 'Directory blocks automated access — not checked';
 
 export function isBotBlockedDomain(domain: string): boolean {
-  return BOT_BLOCKED_DOMAINS.has(normaliseDomain(domain));
+  const normalised = normaliseDomain(domain);
+  if (!normalised) return false;
+
+  for (const blocked of BOT_BLOCKED_DOMAIN_LIST) {
+    if (normalised === blocked || normalised.endsWith(`.${blocked}`)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // ============================================================================
@@ -99,55 +116,29 @@ const SECTOR_KEYWORDS: Record<Sector, string[]> = {
   ],
 };
 
-// Directories excluded per sector, matched on domain first and on a name
-// pattern as a fallback (the live directory table has drifted from the seed
-// script, so a domain alone is not a safe key).
-const SECTOR_EXCLUSIONS: Record<Sector, { domains: string[]; namePatterns: string[] }> = {
+// Relevance is driven by the directories table's own `categories` column, not
+// by a list of domains maintained in here. A directory is in scope when at
+// least one of its categories is in the sector's allow list — so Yelp UK
+// (general + hospitality) stays in for a roofer on the strength of "general",
+// while TripAdvisor (hospitality + restaurants) drops out, and the Tier 4
+// trade bodies (FMB, TrustMark, Guild of Master Craftsmen) stay in on
+// "trades".
+//
+// `deny` is documentation of the categories this sector is expected to shed.
+// It is not consulted: the allow list decides, so a category nobody has
+// thought of yet (beauty, veterinary, education) is out by default rather
+// than quietly padding the gap count.
+const SECTOR_CATEGORY_RULES: Record<Sector, { allow: string[]; deny: string[] }> = {
   trades: {
-    domains: [
-      'nhs.uk',
-      'cqc.org.uk',
-      'privatehealthcare.co.uk',
-      'lawsociety.org.uk',
-      'sra.org.uk',
-      'icaew.com',
-      'rightmove.co.uk',
-      'zoopla.co.uk',
-      'onthemarket.com',
-      'opentable.co.uk',
-      'opentable.com',
-      'tripadvisor.co.uk',
-      'tripadvisor.com',
-      'theaa.com',
-      'rac.co.uk',
-      'goodgaragescheme.com',
-    ],
-    namePatterns: [
-      'nhs',
-      'care quality',
-      'private healthcare',
-      'law society',
-      'solicitors regulation',
-      'icaew',
-      'chartered accountants',
-      'rightmove',
-      'zoopla',
-      'onthemarket',
-      'on the market',
-      'opentable',
-      'open table',
-      'tripadvisor',
-      'trip advisor',
-      'aa garage',
-      'rac garage',
-      'good garage',
-    ],
+    allow: ['general', 'trades', 'services', 'construction'],
+    deny: ['healthcare', 'property', 'automotive', 'legal', 'accounting', 'restaurants', 'hospitality'],
   },
 };
 
 export interface DirectoryLike {
   name: string;
-  domain: string;
+  domain?: string;
+  categories?: unknown;
 }
 
 export interface RelevanceDecision {
@@ -158,6 +149,39 @@ export interface RelevanceDecision {
 
 export function normaliseDomain(domain: string): string {
   return (domain || '').trim().toLowerCase().replace(/^www\./, '');
+}
+
+// The column is TEXT[] in Postgres but arrives as a JSON string through some
+// clients and exports, so both shapes are accepted.
+export function parseCategories(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(v => String(v).trim().toLowerCase()).filter(Boolean);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map(v => String(v).trim().toLowerCase()).filter(Boolean);
+        }
+      } catch {
+        // fall through to the delimited forms below
+      }
+    }
+
+    // Postgres array literal {a,b} or a plain comma-separated list
+    return trimmed
+      .replace(/^[{[]|[}\]]$/g, '')
+      .split(',')
+      .map(v => v.trim().replace(/^["']|["']$/g, '').toLowerCase())
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 export function resolveSector(category: string | null | undefined): Sector | null {
@@ -173,36 +197,39 @@ export function resolveSector(category: string | null | undefined): Sector | nul
   return null;
 }
 
-// A directory is relevant unless the client's sector is one we hold an
-// exclusion list for AND the directory is on it. Unknown categories keep
-// every directory — we never silently shrink a scan on a guess.
+export function sectorCategoryRules(sector: Sector): { allow: string[]; deny: string[] } {
+  return SECTOR_CATEGORY_RULES[sector];
+}
+
 export function assessRelevance(
   directory: DirectoryLike,
   category: string | null | undefined
 ): RelevanceDecision {
   const sector = resolveSector(category);
   if (!sector) {
-    return { relevant: true, sector: null, reason: 'No sector exclusions for this category' };
+    return { relevant: true, sector: null, reason: 'No category rules for this client category' };
   }
 
-  const exclusions = SECTOR_EXCLUSIONS[sector];
-  const domain = normaliseDomain(directory.domain);
-  const name = (directory.name || '').toLowerCase();
+  const { allow } = SECTOR_CATEGORY_RULES[sector];
+  const directoryCategories = parseCategories(directory.categories);
 
-  const domainHit = exclusions.domains.some(
-    excluded => domain === excluded || domain.endsWith(`.${excluded}`)
-  );
-  const nameHit = exclusions.namePatterns.some(pattern => name.includes(pattern));
-
-  if (domainHit || nameHit) {
-    return {
-      relevant: false,
-      sector,
-      reason: `Sector-specific directory — cannot apply to a ${sector} business`,
-    };
+  // An untagged directory is kept. A scan is never silently narrowed because
+  // a row is missing data.
+  if (directoryCategories.length === 0) {
+    return { relevant: true, sector, reason: 'Directory has no categories — kept by default' };
   }
 
-  return { relevant: true, sector, reason: `Relevant to ${sector}` };
+  const matched = directoryCategories.filter(c => allow.includes(c));
+
+  if (matched.length > 0) {
+    return { relevant: true, sector, reason: `Tagged ${matched.join(', ')}` };
+  }
+
+  return {
+    relevant: false,
+    sector,
+    reason: `Tagged ${directoryCategories.join(', ')} — cannot apply to a ${sector} business`,
+  };
 }
 
 export function partitionByRelevance<T extends DirectoryLike>(
@@ -363,8 +390,6 @@ export const EXTERNAL_DIRECTORY_TERMS: string[] = [
   'Angie',
   "Angie's List",
   'Houzz',
-  'Trustatrader',
-  'TrustATrader',
   'Local.com',
   'Citysearch',
   'Manta',

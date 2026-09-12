@@ -22,7 +22,7 @@ interface CitationWithDetails {
   live_at: string | null;
   verified_at: string | null;
   client: { business_name: string; category: string } | null;
-  directory: { name: string; url: string; tier: number; domain: string } | null;
+  directory: { name: string; url: string; tier: number; domain: string; categories: string[] } | null;
 }
 
 type Filter = 'all' | 'live' | 'possible_match' | 'not_found';
@@ -85,7 +85,7 @@ export default function CitationsPage() {
 
         const directoryIds = Array.from(new Set((data || []).map(c => c.directory_id).filter(Boolean)));
         const { data: directories } = directoryIds.length > 0
-          ? await supabase.from('directories').select('id, name, url, tier').in('id', directoryIds)
+          ? await supabase.from('directories').select('id, name, url, tier, categories').in('id', directoryIds)
           : { data: [] };
 
         const directoryMap = new Map(
@@ -104,7 +104,7 @@ export default function CitationsPage() {
         const relevantOnly = enrichedData.filter((citation) => {
           if (!citation.directory) return true;
           return assessRelevance(
-            { name: citation.directory.name, domain: citation.directory.domain },
+            { name: citation.directory.name, categories: citation.directory.categories },
             citation.client?.category
           ).relevant;
         });

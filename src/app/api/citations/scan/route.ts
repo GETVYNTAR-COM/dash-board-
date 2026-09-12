@@ -616,6 +616,13 @@ const DIRECT_CHECK_DIRECTORIES: Record<string, {
     firecrawlFallback: true,
     buildUrl: (name, city) => `https://www.brownbook.net/search/?what=${encodeURIComponent(name)}&where=${encodeURIComponent(city || '')},+United+Kingdom`,
   },
+  'trustatrader.com': {
+    // Site search is behind a trade+postcode form, so a constructed scrape URL
+    // would 404 and read as "not listed". SerpAPI only: if it cannot answer,
+    // the honest result is cannot_verify.
+    serpApiSupported: true,
+    firecrawlFallback: false,
+  },
   'misterwhat.co.uk': {
     serpApiSupported: false,
     firecrawlFallback: true,
@@ -929,6 +936,13 @@ async function verifyDirectory(
       baseResult.status = 'cannot_verify';
       baseResult.reason = 'No search method available for this directory';
       baseResult.verificationMethod = 'none';
+    } else {
+      // SerpAPI was the only method and it did not return a usable answer.
+      // Never fall through with an empty reason — an unexplained result is
+      // indistinguishable from a checked one.
+      baseResult.status = 'cannot_verify';
+      baseResult.reason = 'Search unavailable — SerpAPI returned no usable result and no fallback is configured';
+      baseResult.verificationMethod = 'serpapi_unavailable';
     }
 
     console.log(`[Directory Scan] ${directoryName} (${domain}): status=${baseResult.status}, reason="${baseResult.reason}"`);

@@ -8,9 +8,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { LIVE_DIRECTORIES } from './fixtures-directories.ts';
 import {
   assessRelevance,
   findForbiddenDirectoryMentions,
+  parseCategories,
   calculateCitationScore,
   countEvidence,
   formatMissingSummary,
@@ -57,6 +59,29 @@ describe('1. blocked must not mean absent', () => {
     assert.equal(normaliseStatus('blocked'), 'cannot_verify');
     assert.equal(countEvidence([{ status: 'blocked' }]).missing, 0);
     assert.equal(countEvidence([{ status: 'blocked' }]).cannotVerify, 1);
+  });
+
+  it('flags every blocking directory at the URL the live table actually stores', () => {
+    const blockingNames = [
+      'LinkedIn', 'Instagram', 'Facebook Business', 'Apple Maps', 'Yelp UK',
+      'TikTok Business', 'Nextdoor', 'Pinterest Business', 'Cylex UK',
+      'Tuugo UK', 'Lacartes UK', 'City Visitor', 'Hotfrog UK',
+    ];
+
+    for (const name of blockingNames) {
+      const directory = LIVE_DIRECTORIES.find(d => d.name === name);
+      assert.ok(directory, `${name} missing from the fixture`);
+      const host = new URL(directory!.url).hostname.replace(/^www\./, '');
+      assert.ok(isBotBlockedDomain(host), `${name} (${host}) must be recognised as bot-blocked`);
+    }
+  });
+
+  it('does not treat a checkable directory as blocked', () => {
+    for (const name of ['Yell.com', 'Checkatrade', 'Thomson Local', 'FreeIndex', '192.com']) {
+      const directory = LIVE_DIRECTORIES.find(d => d.name === name)!;
+      const host = new URL(directory.url).hostname.replace(/^www\./, '');
+      assert.equal(isBotBlockedDomain(host), false, `${name} (${host}) should be checkable`);
+    }
   });
 
   it('flags the directories known to block automated access', () => {
@@ -127,22 +152,24 @@ describe('2. NAP is evaluated only where a listing exists', () => {
   });
 });
 
-describe('3. category relevance', () => {
-  const irrelevantForTrades = [
-    { name: 'NHS Choices', domain: 'nhs.uk' },
-    { name: 'Care Quality Commission', domain: 'cqc.org.uk' },
-    { name: 'Private Healthcare UK', domain: 'privatehealthcare.co.uk' },
-    { name: 'The Law Society', domain: 'lawsociety.org.uk' },
-    { name: 'Solicitors Regulation Authority', domain: 'sra.org.uk' },
-    { name: 'Institute of Chartered Accountants', domain: 'icaew.com' },
-    { name: 'Rightmove', domain: 'rightmove.co.uk' },
-    { name: 'Zoopla', domain: 'zoopla.co.uk' },
-    { name: 'OnTheMarket', domain: 'onthemarket.com' },
-    { name: 'OpenTable UK', domain: 'opentable.co.uk' },
-    { name: 'TripAdvisor UK', domain: 'tripadvisor.co.uk' },
-    { name: 'AA Garage Guide', domain: 'theaa.com' },
-    { name: 'RAC Garages', domain: 'rac.co.uk' },
-    { name: 'Good Garage Scheme', domain: 'goodgaragescheme.com' },
+describe('3. category relevance is driven by the directories table', () => {
+  // The 14 the live table tags healthcare / property / automotive / legal /
+  // accounting / restaurants / hospitality with nothing general alongside.
+  const EXPECTED_TRADE_EXCLUSIONS = [
+    'AA Garage Guide',
+    'Care Quality Commission',
+    'Good Garage Scheme',
+    'ICAEW',
+    'Law Society',
+    'NHS',
+    'OnTheMarket',
+    'OpenTable UK',
+    'Private Healthcare UK',
+    'RAC Garages',
+    'Rightmove',
+    'SRA',
+    'TripAdvisor UK',
+    'Zoopla',
   ];
 
   it('recognises trade categories', () => {
@@ -151,48 +178,64 @@ describe('3. category relevance', () => {
     }
   });
 
-  it('excludes every listed sector directory for a trade business', () => {
-    for (const directory of irrelevantForTrades) {
-      assert.equal(
-        assessRelevance(directory, 'Roofer').relevant,
-        false,
-        `${directory.name} should be excluded for a roofer`
-      );
+  it('excludes exactly the sector-tagged directories for a roofer', () => {
+    const { relevant, excluded } = partitionByRelevance(LIVE_DIRECTORIES, 'Roofer');
+    assert.deepEqual(excluded.map(d => d.name).sort(), EXPECTED_TRADE_EXCLUSIONS);
+    assert.equal(relevant.length, LIVE_DIRECTORIES.length - EXPECTED_TRADE_EXCLUSIONS.length);
+  });
+
+  it('keeps the Tier 4 trade bodies — they are tagged trades', () => {
+    for (const name of ['Federation of Master Builders', 'TrustMark', 'Guild of Master Craftsmen']) {
+      const directory = LIVE_DIRECTORIES.find(d => d.name === name);
+      assert.ok(directory, `${name} missing from the fixture`);
+      assert.equal(assessRelevance(directory!, 'Roofer').relevant, true, `${name} must not be excluded for a roofer`);
     }
   });
 
-  it('keeps general and trade directories for a trade business', () => {
-    for (const directory of [
-      { name: 'Yell', domain: 'yell.com' },
-      { name: 'Checkatrade', domain: 'checkatrade.com' },
-      { name: 'Google Business Profile', domain: 'business.google.com' },
-      { name: 'Which? Trusted Traders', domain: 'trustedtraders.which.co.uk' },
-    ]) {
-      assert.equal(assessRelevance(directory, 'Plumber').relevant, true, `${directory.name} should be kept`);
+  it('keeps a directory tagged general alongside an excluded category', () => {
+    // Yelp UK is general + hospitality: general keeps it in scope.
+    const yelp = LIVE_DIRECTORIES.find(d => d.name === 'Yelp UK')!;
+    assert.equal(assessRelevance(yelp, 'Roofer').relevant, true);
+
+    // TripAdvisor is hospitality + restaurants with nothing general: out.
+    const tripadvisor = LIVE_DIRECTORIES.find(d => d.name === 'TripAdvisor UK')!;
+    assert.equal(assessRelevance(tripadvisor, 'Roofer').relevant, false);
+  });
+
+  it('keeps every general, trades and services directory for a trade client', () => {
+    for (const directory of LIVE_DIRECTORIES) {
+      const tagged = directory.categories.some(c => ['general', 'trades', 'services', 'construction'].includes(c));
+      if (tagged) {
+        assert.equal(assessRelevance(directory, 'Plumber').relevant, true, `${directory.name} should be kept`);
+      }
     }
   });
 
-  it('keeps the full directory set for a category with no exclusion list', () => {
-    for (const directory of irrelevantForTrades) {
-      assert.equal(assessRelevance(directory, 'Dental Practice').relevant, true);
-      assert.equal(assessRelevance(directory, '').relevant, true);
-    }
+  it('keeps the full table for a category with no rules', () => {
+    const { relevant, excluded } = partitionByRelevance(LIVE_DIRECTORIES, 'Dental Practice');
+    assert.equal(relevant.length, LIVE_DIRECTORIES.length);
+    assert.equal(excluded.length, 0);
   });
 
-  it('matches on name when the stored domain has drifted', () => {
-    assert.equal(assessRelevance({ name: 'AA Garage Guide', domain: 'aa-garage-guide.example' }, 'Builder').relevant, false);
+  it('keeps an untagged directory rather than silently narrowing the scan', () => {
+    assert.equal(assessRelevance({ name: 'Newly Added', categories: [] }, 'Roofer').relevant, true);
+    assert.equal(assessRelevance({ name: 'Newly Added' }, 'Roofer').relevant, true);
   });
 
-  it('removes excluded directories from the count, not just the display', () => {
-    const catalogue = [
-      { name: 'Yell', domain: 'yell.com' },
-      { name: 'Rightmove', domain: 'rightmove.co.uk' },
-      { name: 'NHS Choices', domain: 'nhs.uk' },
-    ];
-    const { relevant, excluded } = partitionByRelevance(catalogue, 'Roofer');
-    assert.equal(relevant.length, 1);
-    assert.equal(excluded.length, 2);
-    assert.ok(excluded.every(d => d.exclusionReason.includes('trades')));
+  it('reads the categories column in every shape it arrives in', () => {
+    assert.deepEqual(parseCategories(['General', ' Trades ']), ['general', 'trades']);
+    assert.deepEqual(parseCategories('["healthcare"]'), ['healthcare']);
+    assert.deepEqual(parseCategories('{trades,construction}'), ['trades', 'construction']);
+    assert.deepEqual(parseCategories('property, legal'), ['property', 'legal']);
+    assert.deepEqual(parseCategories(null), []);
+
+    // A shape that fails to parse must not exclude the directory.
+    assert.equal(assessRelevance({ name: 'Odd Row', categories: 42 }, 'Roofer').relevant, true);
+  });
+
+  it('keeps TrustATrader in scope for trades once it is in the table', () => {
+    assert.equal(assessRelevance({ name: 'TrustATrader', categories: ['trades'] }, 'Roofer').relevant, true);
+    assert.equal(assessRelevance({ name: 'TrustATrader', categories: ['trades'] }, 'Dental Practice').relevant, true);
   });
 });
 

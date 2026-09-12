@@ -45,10 +45,7 @@ export async function POST(request: NextRequest) {
     const { relevant: availableDirectories } = partitionByRelevance(
       allDirectories
         .filter((d: any) => !existingDirIds.has(d.id))
-        .map((d: any) => ({
-          ...d,
-          domain: String(d.url || '').replace(/^https?:\/\/(www\.)?/, '').split('/')[0],
-        })),
+        .map((d: any) => ({ ...d, name: d.name })),
       client.category
     );
 

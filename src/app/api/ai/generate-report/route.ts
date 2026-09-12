@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     // Get citations with directory info
     const { data: citations, error: citationsError } = await supabase
       .from('citations')
-      .select('*, directory:directories(name, tier, domain_authority)')
+      .select('*, directory:directories(name, tier, domain_authority, categories)')
       .eq('client_id', clientId);
 
     if (citationsError) {
@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
       ...c,
       status: normaliseStatus(c.status),
       name: c.directory?.name || 'Unknown directory',
+      categories: c.directory?.categories ?? [],
       domain: c.directory?.url ? String(c.directory.url).replace(/^https?:\/\/(www\.)?/, '').split('/')[0] : '',
     }));
 
